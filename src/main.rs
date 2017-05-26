@@ -80,6 +80,14 @@ fn main() {
                 if metadata.is_dir() {
                     resp.headers.set(headers::ContentType::html());
                     let mut files = Vec::new();
+                    if path_prefix.len() > 0 {
+                        let mut link = path_prefix.clone();
+                        link.pop();
+                        files.push(format!(
+                            "<tr><td><a href=\"/{}\"><strong>{}</strong></a></td> <td></td> <td></td></tr>",
+                            link.join("/"), ".."
+                        ));
+                    }
                     for entry in fs::read_dir(&path).unwrap() {
                         let entry = entry.unwrap();
                         let entry_meta = entry.metadata().unwrap();
