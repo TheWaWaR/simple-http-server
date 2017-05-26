@@ -61,7 +61,7 @@ fn main() {
 
     println!("current dir: {:?}", env::current_dir());
     let addr = format!("0.0.0.0:{}", port);
-    println!("Server running on http://{:?}", addr);
+    println!("Server running on: http://{}", addr);
 
     Iron::new(move |req: &mut Request| {
         println!("Url: {:?}", req.url.path());
@@ -73,6 +73,10 @@ fn main() {
             Ok(f) => {
                 let mut resp = Response::with(status::Ok);
                 let metadata = f.metadata().unwrap();
+                let path_prefix = req.url.path()
+                    .into_iter()
+                    .filter(|s| !s.is_empty())
+                    .collect::<Vec<&str>>();
                 if metadata.is_dir() {
                     resp.headers.set(headers::ContentType::html());
                     let mut files = Vec::new();
@@ -83,13 +87,12 @@ fn main() {
                         let file_modified = system_time_to_date_time(entry_meta.modified().unwrap())
                             .format("%Y-%m-%d %H:%M:%S").to_string();
                         let file_size = convert(entry_meta.len() as f64);
-                        let link = req.url.path()
-                            .into_iter()
-                            .filter(|s| !s.is_empty())
-                            .collect::<Vec<&str>>().join("/");
+                        let mut link = path_prefix.clone();
+                        link.push(&file_name);
+                        let link = link.join("/");
                         files.push(format!(
-                            "<tr><td><a href=\"/{}/{}\">{}</a></td> <td style=\"color: #999;\">{}</td> <td><bold>{}</bold></td></tr>",
-                            link, file_name, file_name, file_modified, file_size
+                            "<tr><td><a href=\"/{}\">{}</a></td> <td style=\"color: #999;\">{}</td> <td><bold>{}</bold></td></tr>",
+                            link, file_name, file_modified, file_size
                         ));
                     }
                     resp = resp.set(format!("<html><body><table>{}</table></body></html>", files.join("\n")));
