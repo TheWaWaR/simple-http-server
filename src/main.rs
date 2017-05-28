@@ -3,21 +3,25 @@ extern crate log;
 extern crate env_logger;
 extern crate clap;
 extern crate iron;
+extern crate pretty_bytes;
+extern crate chrono;
 
 use std::env;
 use std::fs::{self, File};
 use std::path::{PathBuf};
 use std::error::Error;
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::os::unix::ffi::OsStrExt;
 
 use iron::headers;
 use iron::{Iron, Request, Response, Set, status};
+use pretty_bytes::converter::convert;
+use chrono::{DateTime, UTC, TimeZone};
 
 
 fn main() {
     env_logger::init().unwrap();
 
-    let default_port = "8000";
     let matches = clap::App::new("Simple HTTP Server")
         .arg(clap::Arg::with_name("root")
              .index(1)
@@ -36,7 +40,7 @@ fn main() {
              .short("p")
              .long("port")
              .takes_value(true)
-             .default_value(default_port)
+             .default_value("8000")
              .validator(|s| {
                  match s.parse::<u16>() {
                      Ok(_) => Ok(()),
@@ -74,14 +78,21 @@ fn main() {
                     let mut files = Vec::new();
                     for entry in fs::read_dir(&path).unwrap() {
                         let entry = entry.unwrap();
+                        let entry_meta = entry.metadata().unwrap();
                         let file_name = entry.file_name().into_string().unwrap();
-                        let link = req.url.path().join("/");
+                        let file_modified = system_time_to_date_time(entry_meta.modified().unwrap())
+                            .format("%Y-%m-%d %H:%M:%S").to_string();
+                        let file_size = convert(entry_meta.len() as f64);
+                        let link = req.url.path()
+                            .into_iter()
+                            .filter(|s| !s.is_empty())
+                            .collect::<Vec<&str>>().join("/");
                         files.push(format!(
-                            "<li><a href=\"/{}/{}\">{}</a></li>",
-                            link, file_name, file_name
+                            "<tr><td><a href=\"/{}/{}\">{}</a></td> <td style=\"color: #999;\">{}</td> <td><bold>{}</bold></td></tr>",
+                            link, file_name, file_name, file_modified, file_size
                         ));
                     }
-                    resp = resp.set(format!("<html><body>{}</body></html>", files.join("\n")));
+                    resp = resp.set(format!("<html><body><table>{}</table></body></html>", files.join("\n")));
                 } else {
                     resp.headers.set(headers::ContentDisposition {
                         disposition: headers::DispositionType::Attachment,
@@ -102,4 +113,20 @@ fn main() {
             }
         }
     }).http(addr).unwrap();
+}
+
+fn system_time_to_date_time(t: SystemTime) -> DateTime<UTC> {
+    let (sec, nsec) = match t.duration_since(UNIX_EPOCH) {
+        Ok(dur) => (dur.as_secs() as i64, dur.subsec_nanos()),
+        Err(e) => { // unlikely but should be handled
+            let dur = e.duration();
+            let (sec, nsec) = (dur.as_secs() as i64, dur.subsec_nanos());
+            if nsec == 0 {
+                (-sec, 0)
+            } else {
+                (-sec - 1, 1_000_000_000 - nsec)
+            }
+        },
+    };
+    UTC.timestamp(sec, nsec)
 }
