@@ -2,6 +2,10 @@
 name = "simple-http-server"
 version = "0.1.0"
 authors = ["thewawar <thewawar@gmail.com>"]
+license = "MIT"
+description = "SimpleHTTPServer.py"
+keywords = ["simple", "http", "server", "static"]
+repository = "https://github.com/TheWaWaR/simple-http-server"
 
 [dependencies]
 log = "0.3.8"
