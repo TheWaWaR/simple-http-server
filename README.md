@@ -1,5 +1,9 @@
-# simple-http-server
-SimpleHTTPServer in Rust
+# How to use?
+``` bash
+cargo install simple-http-server
+rehash
+simple-http-server -p 3000
+```
 
 # Features
 - [x] Specify listen address
