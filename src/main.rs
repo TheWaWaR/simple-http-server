@@ -1,6 +1,6 @@
-#[macro_use]
-extern crate log;
-extern crate env_logger;
+// #[macro_use]
+// extern crate log;
+// extern crate env_logger;
 extern crate clap;
 extern crate iron;
 extern crate pretty_bytes;
@@ -14,14 +14,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::os::unix::ffi::OsStrExt;
 
 use iron::headers;
-use iron::{Iron, Request, Response, Set, status};
+use iron::status;
+use iron::{Iron, Request, Response, IronResult, Set, Chain, Handler, AfterMiddleware};
 use pretty_bytes::converter::convert;
 use chrono::{DateTime, UTC, TimeZone};
 
 
 fn main() {
-    env_logger::init().unwrap();
-
+    // env_logger::init().unwrap();
     let matches = clap::App::new("Simple HTTP Server")
         .arg(clap::Arg::with_name("root")
              .index(1)
@@ -48,6 +48,22 @@ fn main() {
                  }
              })
              .help("Port number"))
+        .arg(clap::Arg::with_name("threads")
+             .short("t")
+             .long("threads")
+             .takes_value(true)
+             .default_value("3")
+             .validator(|s| {
+                 match s.parse::<u8>() {
+                     Ok(v) => {
+                         if v > 0 { Ok(()) } else {
+                             Err("Nagetive threads".to_owned())
+                         }
+                     }
+                     Err(e) => Err(e.description().to_string())
+                 }
+             })
+             .help("How many http threads"))
         .get_matches();
     let root = matches
         .value_of("root")
@@ -58,14 +74,30 @@ fn main() {
         .unwrap()
         .parse::<u16>()
         .unwrap();
+    let threads = matches
+        .value_of("threads")
+        .unwrap()
+        .parse::<u8>()
+        .unwrap();
 
-    println!("current dir: {:?}", env::current_dir());
+    println!("[Root]: {}", root.to_str().unwrap());
     let addr = format!("0.0.0.0:{}", port);
-    println!("Server running on: http://{}", addr);
+    println!("[Listening ({} threads)]: http://{}", threads, addr);
+    println!("----------------------------------------");
 
-    Iron::new(move |req: &mut Request| {
-        println!("Url: {:?}", req.url.path());
-        let mut path = root.clone();
+    let mut chain = Chain::new(MainHandler{root: root});
+    chain.link_after(RequestLogger);
+    let mut server = Iron::new(chain);
+    server.threads = threads as usize;
+    server.http(addr).unwrap();
+}
+
+struct MainHandler { root: PathBuf }
+struct RequestLogger;
+
+impl Handler for MainHandler {
+    fn handle(&self, req: &mut Request) -> IronResult<Response> {
+        let mut path = self.root.clone();
         for part in req.url.path() {
             path.push(part);
         }
@@ -123,7 +155,14 @@ fn main() {
                 Ok(Response::with((status::NotFound, e.description().to_string())))
             }
         }
-    }).http(addr).unwrap();
+    }
+}
+
+impl AfterMiddleware for RequestLogger {
+    fn after(&self, req: &mut Request, resp: Response) -> IronResult<Response> {
+        println!("[{} -> {:?}]: {}", req.method, resp.status.unwrap(), req.url.as_ref());
+        Ok(resp)
+    }
 }
 
 fn system_time_to_date_time(t: SystemTime) -> DateTime<UTC> {
