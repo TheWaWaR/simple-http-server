@@ -1,3 +1,7 @@
+# How it looks like?
+
+![screenshot](./screenshot.png)
+
 # How to use?
 
 ``` bash
