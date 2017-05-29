@@ -13,4 +13,5 @@ simple-http-server -p 3000
 - [x] Nginx like directory view (directory entries, link, filesize, modfiled date)
 - [x] Breadcrumb
 - [x] Guess mime type
+- [x] Automatic redirect to [index.html, index.htm]
 - [ ] Upload file <Optional>

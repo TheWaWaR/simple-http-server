@@ -35,6 +35,10 @@ fn main() {
                  }
              })
              .help("Root directory"))
+        .arg(clap::Arg::with_name("index")
+             .short("i")
+             .long("index")
+             .help("Automatic render index page [index.html, index.html]"))
         .arg(clap::Arg::with_name("port")
              .short("p")
              .long("port")
@@ -68,6 +72,7 @@ fn main() {
         .value_of("root")
         .map(|s| PathBuf::from(s))
         .unwrap_or(env::current_dir().unwrap());
+    let index = matches.is_present("index");
     let port = matches
         .value_of("port")
         .unwrap()
@@ -87,15 +92,36 @@ fn main() {
              Blue.paint(now_string()),
              Blue.paint(threads.to_string()));
 
-    let mut chain = Chain::new(MainHandler{root: root});
+    let mut chain = Chain::new(MainHandler{root: root, index: index});
     chain.link_after(RequestLogger);
     let mut server = Iron::new(chain);
     server.threads = threads as usize;
     server.http(addr).unwrap();
 }
 
-struct MainHandler { root: PathBuf }
+struct MainHandler { root: PathBuf, index: bool }
 struct RequestLogger;
+
+impl MainHandler {
+    fn send_file(&self, mut resp: Response, path: &PathBuf) -> IronResult<Response> {
+        resp.set_mut(path.as_path());
+        if resp.headers.get::<headers::ContentType>() == Some(
+            &headers::ContentType(mime::Mime(mime::TopLevel::Text, mime::SubLevel::Plain, vec![]))
+        ) {
+            resp.headers.set(headers::ContentDisposition {
+                disposition: headers::DispositionType::Attachment,
+                parameters: vec![headers::DispositionParam::Filename(
+                    headers::Charset::Ext("utf-8".to_owned()), // The character set for the bytes of the filename
+                    None, // The optional language tag (see `language-tag` crate)
+                    path.file_name().unwrap().as_bytes().to_vec() // the actual bytes of the filename
+                )]
+            });
+            let default_mime: iron::mime::Mime = "application/octet-stream".parse().unwrap();
+            resp.headers.set(headers::ContentType(default_mime));
+        }
+        return Ok(resp)
+    }
+}
 
 impl Handler for MainHandler {
     fn handle(&self, req: &mut Request) -> IronResult<Response> {
@@ -145,6 +171,14 @@ impl Handler for MainHandler {
                         let entry = entry.unwrap();
                         let entry_meta = entry.metadata().unwrap();
                         let file_name = entry.file_name().into_string().unwrap();
+                        if self.index {
+                            for fname in vec!["index.html", "index.htm"] {
+                                if file_name == fname {
+                                    path.push(file_name);
+                                    return self.send_file(resp, &path);
+                                }
+                            }
+                        }
                         let file_modified = system_time_to_date_time(entry_meta.modified().unwrap())
                             .format("%Y-%m-%d %H:%M:%S").to_string();
                         let file_size = convert(entry_meta.len() as f64);
@@ -166,24 +200,10 @@ impl Handler for MainHandler {
                         "<html><body>{} <hr /><table>{}</table></body></html>",
                         breadcrumb, files.join("\n")
                     ));
+                    Ok(resp)
                 } else {
-                    resp.set_mut(path.as_path());
-                    if resp.headers.get::<headers::ContentType>() == Some(
-                        &headers::ContentType(mime::Mime(mime::TopLevel::Text, mime::SubLevel::Plain, vec![]))
-                    ) {
-                        resp.headers.set(headers::ContentDisposition {
-                            disposition: headers::DispositionType::Attachment,
-                            parameters: vec![headers::DispositionParam::Filename(
-                                headers::Charset::Ext("utf-8".to_owned()), // The character set for the bytes of the filename
-                                None, // The optional language tag (see `language-tag` crate)
-                                path.file_name().unwrap().as_bytes().to_vec() // the actual bytes of the filename
-                            )]
-                        });
-                        let default_mime: iron::mime::Mime = "application/octet-stream".parse().unwrap();
-                        resp.headers.set(headers::ContentType(default_mime));
-                    }
-                };
-                Ok(resp)
+                    self.send_file(resp, &path)
+                }
             },
             Err(e) => {
                 Ok(Response::with((status::NotFound, e.description().to_string())))
