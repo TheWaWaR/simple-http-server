@@ -1,5 +1,10 @@
 # How to use?
+
 ``` bash
+# Install Rust
+curl https://sh.rustup.rs -sSf | sh
+
+# Install simple-http-server
 cargo install simple-http-server
 rehash
 simple-http-server -h
