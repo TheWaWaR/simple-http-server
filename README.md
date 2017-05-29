@@ -1,6 +1,6 @@
 # How it looks like?
 
-![screenshot](./screenshot.png =403x331)
+<img src="./screenshot.png" width="50%" height="50%">
 
 # How to use?
 
