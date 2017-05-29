@@ -20,4 +20,4 @@ simple-http-server -h
 - [x] Guess mime type
 - [x] (default disabled) Automatic render index page [index.html, index.htm]
 - [x] (default disabled) Upload file
-- [ ] Basic Authentication (by password)
+- [x] HTTP Basic Authentication (by username:password)

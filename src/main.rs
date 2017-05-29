@@ -7,6 +7,7 @@ extern crate iron;
 extern crate multipart;
 
 use std::env;
+use std::fmt;
 use std::str::FromStr;
 use std::net::IpAddr;
 use std::fs::{self, File};
@@ -20,8 +21,8 @@ use iron::status;
 use iron::mime;
 use iron::method;
 use iron::modifiers::Redirect;
-use iron::{Iron, Request, Response, IronResult, Set, Chain, Handler,
-           AfterMiddleware};
+use iron::{Iron, Request, Response, IronResult, IronError, Set, Chain, Handler,
+           BeforeMiddleware, AfterMiddleware};
 use multipart::server::{Multipart, SaveResult};
 use pretty_bytes::converter::convert;
 use chrono::{DateTime, Local, TimeZone};
@@ -76,6 +77,21 @@ fn main() {
                  }
              })
              .help("Port number"))
+        .arg(clap::Arg::with_name("auth")
+             .short("a")
+             .long("auth")
+             .takes_value(true)
+             .validator(|s| {
+                 let parts = s.splitn(2, ':').collect::<Vec<&str>>();
+                 if parts.len() < 2 || parts.len() >= 2 && parts[1].len() < 1 {
+                     Err("no password found".to_owned())
+                 } else if parts[0].len() < 1 {
+                     Err("no username found".to_owned())
+                 } else {
+                     Ok(())
+                 }
+             })
+             .help("HTTP Basic Auth (username:password)"))
         .arg(clap::Arg::with_name("threads")
              .short("t")
              .long("threads")
@@ -105,6 +121,7 @@ fn main() {
         .unwrap()
         .parse::<u16>()
         .unwrap();
+    let auth = matches.value_of("auth");
     let threads = matches
         .value_of("threads")
         .unwrap()
@@ -112,15 +129,19 @@ fn main() {
         .unwrap();
 
     let addr = format!("{}:{}", ip, port);
-    println!("  Index: {}, Upload: {}, Threads: {}",
+    println!("  Index: {}, Upload: {}, Threads: {}, Auth: {}",
              Blue.paint(index.to_string()),
              Blue.paint(upload.to_string()),
-             Blue.paint(threads.to_string()));
+             Blue.paint(threads.to_string()),
+             Blue.paint(auth.unwrap_or("disabled").to_string()));
     println!("   Root: {}", Blue.paint(root.to_str().unwrap()));
     println!("Address: {}", Blue.paint(format!("http://{}", addr)));
     println!("======== [{}] ========", Blue.paint(now_string()));
 
     let mut chain = Chain::new(MainHandler{root, index, upload});
+    if let Some(auth) = auth {
+        chain.link_before(AuthChecker::new(auth));
+    }
     chain.link_after(RequestLogger);
     let mut server = Iron::new(chain);
     server.threads = threads as usize;
@@ -128,20 +149,36 @@ fn main() {
 }
 
 struct MainHandler { root: PathBuf, index: bool, upload: bool }
+struct AuthChecker { username: String, password: String }
 struct RequestLogger;
 
-impl MainHandler {
+#[derive(Debug)]
+struct AuthError;
 
-    fn error(&self, s: status::Status, msg: &str)  -> IronResult<Response> {
-        let mut resp = Response::with((s, format!(
-            "<html><body>{root_link} <hr /><div>[<strong style=\"color:red;\">ERROR {code}</strong>]: {msg}</div></body></html>",
-            root_link=ROOT_LINK,
-            code=s.to_u16(),
-            msg=msg
-        )));
-        resp.headers.set(headers::ContentType::html());
-        Ok(resp)
+impl fmt::Display for AuthError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt("authentication error", f)
     }
+}
+
+impl Error for AuthError {
+    fn description(&self) -> &str {
+        "authentication error"
+    }
+}
+
+fn error_resp(s: status::Status, msg: &str)  -> IronResult<Response> {
+    let mut resp = Response::with((s, format!(
+        "<html><body>{root_link} <hr /><div>[<strong style=\"color:red;\">ERROR {code}</strong>]: {msg}</div></body></html>",
+        root_link=ROOT_LINK,
+        code=s.to_u16(),
+        msg=msg
+    )));
+    resp.headers.set(headers::ContentType::html());
+    Ok(resp)
+}
+
+impl MainHandler {
 
     fn save_files(&self, req: &mut Request, path: &PathBuf) -> Result<(), (status::Status, String)> {
         match Multipart::from_request(req) {
@@ -201,7 +238,7 @@ impl Handler for MainHandler {
 
         if self.upload && req.method == method::Post {
             if let Err((s, msg)) = self.save_files(req, &path) {
-                return self.error(s, &msg);
+                return error_resp(s, &msg);
             } else {
                 return Ok(Response::with((status::Found, Redirect(req.url.clone()))))
             }
@@ -301,7 +338,48 @@ impl Handler for MainHandler {
                     self.send_file(resp, &path)
                 }
             },
-            Err(e) => self.error(status::NotFound, e.description().to_string().as_str())
+            Err(e) => error_resp(status::NotFound, e.description().to_string().as_str())
+        }
+    }
+}
+
+impl AuthChecker {
+    fn new(s: &str) -> AuthChecker {
+        let parts = s.splitn(2, ':').collect::<Vec<&str>>();
+        AuthChecker {
+            username: parts[0].to_owned(),
+            password: parts[1].to_owned()
+        }
+    }
+}
+
+impl BeforeMiddleware for AuthChecker {
+    fn before(&self, req: &mut Request) -> IronResult<()> {
+        match req.headers.get::<headers::Authorization<headers::Basic>>() {
+            Some(&headers::Authorization(headers::Basic { ref username, password: Some(ref password) })) => {
+                if username == self.username.as_str() && password == self.password.as_str() {
+                    Ok(())
+                } else {
+                    Err(IronError {
+                        error: Box::new(AuthError),
+                        response: Response::with((status::Unauthorized, "Wrong username or password."))
+                    })
+                }
+            }
+            Some(&headers::Authorization(headers::Basic { username: _, password: None })) => {
+                Err(IronError {
+                    error: Box::new(AuthError),
+                    response: Response::with((status::Unauthorized, "No password found."))
+                })
+            }
+            None => {
+                let mut resp = Response::with(status::Unauthorized);
+                resp.headers.set_raw("WWW-Authenticate", vec![b"Basic realm=\"main\"".to_vec()]);
+                Err(IronError {
+                    error: Box::new(AuthError),
+                    response: resp
+                })
+            }
         }
     }
 }
