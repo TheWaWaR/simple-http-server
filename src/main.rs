@@ -14,7 +14,7 @@ use iron::headers;
 use iron::status;
 use iron::{Iron, Request, Response, IronResult, Set, Chain, Handler, AfterMiddleware};
 use pretty_bytes::converter::convert;
-use chrono::{DateTime, UTC, TimeZone};
+use chrono::{DateTime, Local, TimeZone};
 
 
 fn main() {
@@ -105,6 +105,7 @@ impl Handler for MainHandler {
                     .into_iter()
                     .filter(|s| !s.is_empty())
                     .collect::<Vec<&str>>();
+                let root_link = "<a href=\"/\">[root]</a>".to_owned();
                 let breadcrumb = if path_prefix.len() > 0 {
                     let mut breadcrumb = path_prefix.clone();
                     let mut bread_links: Vec<String> = Vec::new();
@@ -116,10 +117,10 @@ impl Handler for MainHandler {
                             link, breadcrumb.pop().unwrap().to_owned(),
                         ));
                     }
-                    bread_links.push("<a href=\"/\">[Index]</a>".to_owned());
+                    bread_links.push(root_link);
                     bread_links.reverse();
-                    bread_links.join("/")
-                } else { "<a href=\"/\">[Index]</a>".to_owned() };
+                    bread_links.join(" / ")
+                } else { root_link };
                 if metadata.is_dir() {
                     resp.headers.set(headers::ContentType::html());
                     let mut files = Vec::new();
@@ -138,12 +139,18 @@ impl Handler for MainHandler {
                         let file_modified = system_time_to_date_time(entry_meta.modified().unwrap())
                             .format("%Y-%m-%d %H:%M:%S").to_string();
                         let file_size = convert(entry_meta.len() as f64);
+                        let file_type = entry_meta.file_type();
+                        let link_style = if file_type.is_dir() {
+                            "style=\"font-weight: bold;\"".to_owned()
+                        } else {
+                            "style=\"text-decoration: none;\"".to_owned()
+                        };
                         let mut link = path_prefix.clone();
                         link.push(&file_name);
                         let link = link.join("/");
                         files.push(format!(
-                            "<tr><td><a href=\"/{}\">{}</a></td> <td style=\"color:#999;\">[{}]</td> <td><bold>{}</bold></td></tr>",
-                            link, file_name, file_modified, file_size
+                            "<tr><td><a {} href=\"/{}\">{}</a></td> <td style=\"color:#999;\">[{}]</td> <td><bold>{}</bold></td></tr>",
+                            link_style, link, file_name, file_modified, file_size
                         ));
                     }
                     resp = resp.set(format!(
@@ -179,7 +186,7 @@ impl AfterMiddleware for RequestLogger {
     }
 }
 
-fn system_time_to_date_time(t: SystemTime) -> DateTime<UTC> {
+fn system_time_to_date_time(t: SystemTime) -> DateTime<Local> {
     let (sec, nsec) = match t.duration_since(UNIX_EPOCH) {
         Ok(dur) => (dur.as_secs() as i64, dur.subsec_nanos()),
         Err(e) => { // unlikely but should be handled
@@ -192,5 +199,5 @@ fn system_time_to_date_time(t: SystemTime) -> DateTime<UTC> {
             }
         },
     };
-    UTC.timestamp(sec, nsec)
+    Local.timestamp(sec, nsec)
 }
