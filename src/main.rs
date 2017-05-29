@@ -105,6 +105,21 @@ impl Handler for MainHandler {
                     .into_iter()
                     .filter(|s| !s.is_empty())
                     .collect::<Vec<&str>>();
+                let breadcrumb = if path_prefix.len() > 0 {
+                    let mut breadcrumb = path_prefix.clone();
+                    let mut bread_links: Vec<String> = Vec::new();
+                    bread_links.push(breadcrumb.pop().unwrap().to_owned());
+                    while breadcrumb.len() > 0 {
+                        let link = breadcrumb.join("/");
+                        bread_links.push(format!(
+                            "<a href=\"/{}\">{}</a>",
+                            link, breadcrumb.pop().unwrap().to_owned(),
+                        ));
+                    }
+                    bread_links.push("<a href=\"/\">[Index]</a>".to_owned());
+                    bread_links.reverse();
+                    bread_links.join("/")
+                } else { "<a href=\"/\">[Index]</a>".to_owned() };
                 if metadata.is_dir() {
                     resp.headers.set(headers::ContentType::html());
                     let mut files = Vec::new();
@@ -127,11 +142,14 @@ impl Handler for MainHandler {
                         link.push(&file_name);
                         let link = link.join("/");
                         files.push(format!(
-                            "<tr><td><a href=\"/{}\">{}</a></td> <td style=\"color: #999;\">{}</td> <td><bold>{}</bold></td></tr>",
+                            "<tr><td><a href=\"/{}\">{}</a></td> <td style=\"color:#999;\">[{}]</td> <td><bold>{}</bold></td></tr>",
                             link, file_name, file_modified, file_size
                         ));
                     }
-                    resp = resp.set(format!("<html><body><table>{}</table></body></html>", files.join("\n")));
+                    resp = resp.set(format!(
+                        "<html><body>{} <hr /><table>{}</table></body></html>",
+                        breadcrumb, files.join("\n")
+                    ));
                 } else {
                     resp.headers.set(headers::ContentDisposition {
                         disposition: headers::DispositionType::Attachment,
