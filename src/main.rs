@@ -84,13 +84,11 @@ fn main() {
         .parse::<u8>()
         .unwrap();
 
-    println!("[Root]: {}", Blue.paint(root.to_str().unwrap()));
     let addr = format!("0.0.0.0:{}", port);
-    println!("[Listening on]: {}",
-             Blue.paint(format!("http://{}", addr)));
-    println!("====== [{}] ({} threads) ======",
-             Blue.paint(now_string()),
-             Blue.paint(threads.to_string()));
+    println!("   Root: {}", Blue.paint(root.to_str().unwrap()));
+    println!("  Index: {}", Blue.paint(index.to_string()));
+    println!("Address: {}", Blue.paint(format!("http://{}", addr)));
+    println!("======== [{}] ========", Blue.paint(now_string()));
 
     let mut chain = Chain::new(MainHandler{root: root, index: index});
     chain.link_after(RequestLogger);
@@ -231,7 +229,7 @@ impl AfterMiddleware for RequestLogger {
         };
 
         println!(
-            // datetime, remote-ip, status, method, url-path
+            // datetime, remote-ip, status-code, method, url-path
             "[{}] - {} - {} - {} /{}",
             now_string(),
             req.remote_addr.ip(),
