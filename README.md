@@ -1,6 +1,6 @@
 # How it looks like?
 
-![screenshot](./screenshot.png)
+![screenshot](./screenshot.png =403x331)
 
 # How to use?
 
