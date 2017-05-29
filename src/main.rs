@@ -1,3 +1,4 @@
+#[macro_use]
 extern crate clap;
 extern crate pretty_bytes;
 extern crate chrono;
@@ -28,6 +29,7 @@ const ROOT_LINK: &'static str = "<a href=\"/\">[ROOT]</a>";
 
 fn main() {
     let matches = clap::App::new("Simple HTTP Server")
+        .version(crate_version!())
         .arg(clap::Arg::with_name("root")
              .index(1)
              .validator(|s| {
