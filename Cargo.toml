@@ -14,3 +14,4 @@ chrono = "0.3.1"
 pretty-bytes = "0.2.1"
 # Iron crates
 iron = "^0.5.0"
+multipart = "0.12.0"

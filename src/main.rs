@@ -1,8 +1,9 @@
 extern crate clap;
-extern crate iron;
 extern crate pretty_bytes;
 extern crate chrono;
 extern crate ansi_term;
+extern crate iron;
+extern crate multipart;
 
 use std::env;
 use std::fs::{self, File};
@@ -14,11 +15,16 @@ use std::os::unix::ffi::OsStrExt;
 use iron::headers;
 use iron::status;
 use iron::mime;
-use iron::{Iron, Request, Response, IronResult, Set, Chain, Handler, AfterMiddleware};
+use iron::method;
+use iron::modifiers::Redirect;
+use iron::{Iron, Request, Response, IronResult, Set, Chain, Handler,
+           AfterMiddleware};
+use multipart::server::{Multipart, SaveResult};
 use pretty_bytes::converter::convert;
 use chrono::{DateTime, Local, TimeZone};
 use ansi_term::Colour::{Red, Green, Yellow, Blue};
 
+const ROOT_LINK: &'static str = "<a href=\"/\">[ROOT]</a>";
 
 fn main() {
     let matches = clap::App::new("Simple HTTP Server")
@@ -38,7 +44,11 @@ fn main() {
         .arg(clap::Arg::with_name("index")
              .short("i")
              .long("index")
-             .help("Automatic render index page [index.html, index.htm]"))
+             .help("Enable automatic render index page [index.html, index.htm]"))
+        .arg(clap::Arg::with_name("upload")
+             .short("u")
+             .long("upload")
+             .help("Enable upload files (multiple select)"))
         .arg(clap::Arg::with_name("port")
              .short("p")
              .long("port")
@@ -73,6 +83,7 @@ fn main() {
         .map(|s| PathBuf::from(s))
         .unwrap_or(env::current_dir().unwrap());
     let index = matches.is_present("index");
+    let upload = matches.is_present("upload");
     let port = matches
         .value_of("port")
         .unwrap()
@@ -87,20 +98,62 @@ fn main() {
     let addr = format!("0.0.0.0:{}", port);
     println!("   Root: {}", Blue.paint(root.to_str().unwrap()));
     println!("  Index: {}", Blue.paint(index.to_string()));
+    println!(" Upload: {}", Blue.paint(upload.to_string()));
     println!("Address: {}", Blue.paint(format!("http://{}", addr)));
     println!("======== [{}] ========", Blue.paint(now_string()));
 
-    let mut chain = Chain::new(MainHandler{root: root, index: index});
+    let mut chain = Chain::new(MainHandler{root, index, upload});
     chain.link_after(RequestLogger);
     let mut server = Iron::new(chain);
     server.threads = threads as usize;
-    server.http(addr).unwrap();
+    server.http(&addr).expect(format!("Could not bind on: {}", addr).as_str());
 }
 
-struct MainHandler { root: PathBuf, index: bool }
+struct MainHandler { root: PathBuf, index: bool, upload: bool }
 struct RequestLogger;
 
 impl MainHandler {
+
+    fn error(&self, s: status::Status, msg: &str)  -> IronResult<Response> {
+        let mut resp = Response::with((s, format!(
+            "<html><body>{root_link} <hr /><div>[<strong style=\"color:red;\">ERROR {code}</strong>]: {msg}</div></body></html>",
+            root_link=ROOT_LINK,
+            code=s.to_u16(),
+            msg=msg
+        )));
+        resp.headers.set(headers::ContentType::html());
+        Ok(resp)
+    }
+
+    fn save_files(&self, req: &mut Request, path: &PathBuf) -> Result<(), (status::Status, String)> {
+        match Multipart::from_request(req) {
+            Ok(mut multipart) => {
+                // Fetching all data and processing it.
+                // save().temp() reads the request fully, parsing all fields and saving all files
+                // in a new temporary directory under the OS temporary directory.
+                match multipart.save().temp() {
+                    SaveResult::Full(entries) => {
+                        for (_, files) in entries.files {
+                            for file in files {
+                                let mut target_path = path.clone();
+                                target_path.push(file.filename.unwrap());
+                                if let Err(errno) = fs::copy(file.path, target_path) {
+                                    return Err((status::InternalServerError, format!("Copy file failed: {}", errno)));
+                                }
+                            }
+                        }
+                        Ok(())
+                    },
+                    SaveResult::Partial(_entries, reason) => {
+                        Err((status::InternalServerError, reason.unwrap_err().description().to_owned()))
+                    }
+                    SaveResult::Error(error) => Err((status::InternalServerError, error.description().to_owned())),
+                }
+            }
+            Err(_) => Err((status::BadRequest ,"The request is not multipart".to_owned()))
+        }
+    }
+
     fn send_file(&self, mut resp: Response, path: &PathBuf) -> IronResult<Response> {
         resp.set_mut(path.as_path());
         if resp.headers.get::<headers::ContentType>() == Some(
@@ -127,7 +180,14 @@ impl Handler for MainHandler {
         for part in req.url.path() {
             path.push(part);
         }
-        let root_link: &'static str = "<a href=\"/\">[ROOT]</a>";
+
+        if self.upload && req.method == method::Post {
+            if let Err((s, msg)) = self.save_files(req, &path) {
+                return self.error(s, &msg);
+            } else {
+                return Ok(Response::with((status::Found, Redirect(req.url.clone()))))
+            }
+        }
 
         match File::open(&path) {
             Ok(f) => {
@@ -147,21 +207,21 @@ impl Handler for MainHandler {
                         while breadcrumb.len() > 0 {
                             let link = breadcrumb.join("/");
                             bread_links.push(format!(
-                                "<a href=\"/{}\">{}</a>",
-                                link, breadcrumb.pop().unwrap().to_owned(),
+                                "<a href=\"/{link}\">{label}</a>",
+                                link=link, label=breadcrumb.pop().unwrap().to_owned(),
                             ));
                         }
-                        bread_links.push(root_link.to_owned());
+                        bread_links.push(ROOT_LINK.to_owned());
                         bread_links.reverse();
                         bread_links.join(" / ")
-                    } else { root_link.to_owned() };
+                    } else { ROOT_LINK.to_owned() };
 
                     if path_prefix.len() > 0 {
                         let mut link = path_prefix.clone();
                         link.pop();
                         rows.push(format!(
-                            "<tr><td><a href=\"/{}\"><strong>{}</strong></a></td> <td></td> <td></td></tr>",
-                            link.join("/"), "[Parent Directory]"
+                            "<tr><td><a href=\"/{link}\"><strong>{label}</strong></a></td> <td></td> <td></td></tr>",
+                            link=link.join("/"), label="[Parent Directory]"
                         ));
                     } else {
                         rows.push("<tr><td>&nbsp;</td></tr>".to_owned());
@@ -196,23 +256,34 @@ impl Handler for MainHandler {
                         ));
                     }
                     resp.headers.set(headers::ContentType::html());
+                    let upload_form = if self.upload {
+                        format!(r#"
+<form style="margin-top: 1em;" action="/{path}" method="POST" enctype="multipart/form-data">
+  <input type="file" name="files" accept="*" multiple />
+  <input type="submit" value="Upload" />
+</form>
+"#,
+                                path=path_prefix.join("/"))
+                    } else { "".to_owned() };
                     resp.set_mut(format!(
-                        "<html><body>{} <hr /><table>{}</table></body></html>",
-                        breadcrumb, rows.join("\n")
-                    ));
+                        r#"
+<html>
+<body>
+  {upload_form}
+  <div>{breadcrumb}</div>
+  <hr />
+  <table>{rows}</table>
+</body>
+</html>"#,
+                        upload_form=upload_form,
+                        breadcrumb=breadcrumb,
+                        rows=rows.join("\n")));
                     Ok(resp)
                 } else {
                     self.send_file(resp, &path)
                 }
             },
-            Err(e) => {
-                let mut resp = Response::with((status::NotFound, format!(
-                    "<html><body>{} <hr /><div>[<strong style=\"color:red;\">ERROR</strong>]: {}</div></body></html>",
-                    root_link, e.description().to_string()
-                )));
-                resp.headers.set(headers::ContentType::html());
-                Ok(resp)
-            }
+            Err(e) => self.error(status::NotFound, e.description().to_string().as_str())
         }
     }
 }
@@ -222,7 +293,7 @@ impl AfterMiddleware for RequestLogger {
         let status = resp.status.unwrap();
         let status_str = if status.is_success() {
             Green.bold().paint(status.to_u16().to_string())
-        } else if status.is_informational() {
+        } else if status.is_informational() || status.is_redirection() {
             Yellow.bold().paint(status.to_u16().to_string())
         } else {
             Red.bold().paint(status.to_u16().to_string())
