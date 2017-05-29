@@ -9,6 +9,7 @@ extern crate multipart;
 use std::env;
 use std::fmt;
 use std::str::FromStr;
+use std::io::Write;
 use std::net::IpAddr;
 use std::fs::{self, File};
 use std::path::{PathBuf};
@@ -145,7 +146,11 @@ fn main() {
     chain.link_after(RequestLogger);
     let mut server = Iron::new(chain);
     server.threads = threads as usize;
-    server.http(&addr).expect(format!("Could not bind on: {}", addr).as_str());
+    if let Err(e) = server.http(&addr) {
+        writeln!(std::io::stderr(), "{}: Can not bind on {}, {}",
+                 Red.bold().paint("ERROR"), addr, e).unwrap();
+        std::process::exit(1);
+    };
 }
 
 struct MainHandler { root: PathBuf, index: bool, upload: bool }
