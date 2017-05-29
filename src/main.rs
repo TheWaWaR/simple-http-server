@@ -129,43 +129,45 @@ impl Handler for MainHandler {
         for part in req.url.path() {
             path.push(part);
         }
+        let root_link: &'static str = "<a href=\"/\">[ROOT]</a>";
+
         match File::open(&path) {
             Ok(f) => {
                 let mut resp = Response::with(status::Ok);
                 let metadata = f.metadata().unwrap();
-                let path_prefix = req.url.path()
-                    .into_iter()
-                    .filter(|s| !s.is_empty())
-                    .collect::<Vec<&str>>();
-                let root_link = "<a href=\"/\">[ROOT]</a>".to_owned();
-                let breadcrumb = if path_prefix.len() > 0 {
-                    let mut breadcrumb = path_prefix.clone();
-                    let mut bread_links: Vec<String> = Vec::new();
-                    bread_links.push(breadcrumb.pop().unwrap().to_owned());
-                    while breadcrumb.len() > 0 {
-                        let link = breadcrumb.join("/");
-                        bread_links.push(format!(
-                            "<a href=\"/{}\">{}</a>",
-                            link, breadcrumb.pop().unwrap().to_owned(),
-                        ));
-                    }
-                    bread_links.push(root_link);
-                    bread_links.reverse();
-                    bread_links.join(" / ")
-                } else { root_link };
-
                 if metadata.is_dir() {
                     resp.headers.set(headers::ContentType::html());
-                    let mut files = Vec::new();
+                    let mut rows = Vec::new();
+
+                    let path_prefix = req.url.path()
+                        .into_iter()
+                        .filter(|s| !s.is_empty())
+                        .collect::<Vec<&str>>();
+                    let breadcrumb = if path_prefix.len() > 0 {
+                        let mut breadcrumb = path_prefix.clone();
+                        let mut bread_links: Vec<String> = Vec::new();
+                        bread_links.push(breadcrumb.pop().unwrap().to_owned());
+                        while breadcrumb.len() > 0 {
+                            let link = breadcrumb.join("/");
+                            bread_links.push(format!(
+                                "<a href=\"/{}\">{}</a>",
+                                link, breadcrumb.pop().unwrap().to_owned(),
+                            ));
+                        }
+                        bread_links.push(root_link.to_owned());
+                        bread_links.reverse();
+                        bread_links.join(" / ")
+                    } else { root_link.to_owned() };
+
                     if path_prefix.len() > 0 {
                         let mut link = path_prefix.clone();
                         link.pop();
-                        files.push(format!(
+                        rows.push(format!(
                             "<tr><td><a href=\"/{}\"><strong>{}</strong></a></td> <td></td> <td></td></tr>",
                             link.join("/"), "[Parent Directory]"
                         ));
                     } else {
-                        files.push("<tr><td>&nbsp;</td></tr>".to_owned());
+                        rows.push("<tr><td>&nbsp;</td></tr>".to_owned());
                     }
                     for entry in fs::read_dir(&path).unwrap() {
                         let entry = entry.unwrap();
@@ -191,14 +193,14 @@ impl Handler for MainHandler {
                         let mut link = path_prefix.clone();
                         link.push(&file_name);
                         let link = link.join("/");
-                        files.push(format!(
+                        rows.push(format!(
                             "<tr><td><a {} href=\"/{}\">{}</a></td> <td style=\"color:#999;\">[{}]</td> <td><bold>{}</bold></td></tr>",
                             link_style, link, file_name, file_modified, file_size
                         ));
                     }
                     resp.set_mut(format!(
                         "<html><body>{} <hr /><table>{}</table></body></html>",
-                        breadcrumb, files.join("\n")
+                        breadcrumb, rows.join("\n")
                     ));
                     Ok(resp)
                 } else {
@@ -206,7 +208,12 @@ impl Handler for MainHandler {
                 }
             },
             Err(e) => {
-                Ok(Response::with((status::NotFound, e.description().to_string())))
+                let mut resp = Response::with((status::NotFound, format!(
+                    "<html><body>{} <hr /><div>[<strong style=\"color:red;\">ERROR</strong>]: {}</div></body></html>",
+                    root_link, e.description().to_string()
+                )));
+                resp.headers.set(headers::ContentType::html());
+                Ok(resp)
             }
         }
     }
