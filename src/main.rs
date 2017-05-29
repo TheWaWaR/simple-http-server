@@ -79,7 +79,7 @@ fn main() {
     println!("[Root]: {}", root.to_str().unwrap());
     let addr = format!("0.0.0.0:{}", port);
     println!("[Listening ({} threads)]: http://{}", threads, addr);
-    println!("----------------------------------------");
+    println!("[{}]: ========== Server Started! ==========", now_string());
 
     let mut chain = Chain::new(MainHandler{root: root});
     chain.link_after(RequestLogger);
@@ -141,7 +141,7 @@ impl Handler for MainHandler {
                         let file_size = convert(entry_meta.len() as f64);
                         let file_type = entry_meta.file_type();
                         let link_style = if file_type.is_dir() {
-                            "style=\"font-weight: bold;\"".to_owned()
+                            "style=\"text-decoration: none; font-weight: bold;\"".to_owned()
                         } else {
                             "style=\"text-decoration: none;\"".to_owned()
                         };
@@ -181,9 +181,21 @@ impl Handler for MainHandler {
 
 impl AfterMiddleware for RequestLogger {
     fn after(&self, req: &mut Request, resp: Response) -> IronResult<Response> {
-        println!("[{} -> {:?}]: {}", req.method, resp.status.unwrap(), req.url.as_ref());
+        println!(
+            // datetime, remote-addr, status, method, url-path
+            "[{}] - {} - {:?} - {} /{}",
+            now_string(),
+            req.remote_addr.ip(),
+            resp.status.unwrap(),
+            req.method,
+            req.url.as_ref().to_string().splitn(4, '/').collect::<Vec<&str>>().pop().unwrap()
+        );
         Ok(resp)
     }
+}
+
+fn now_string() -> String {
+    Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
 fn system_time_to_date_time(t: SystemTime) -> DateTime<Local> {
