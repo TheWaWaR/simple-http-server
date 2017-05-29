@@ -38,7 +38,7 @@ fn main() {
         .arg(clap::Arg::with_name("index")
              .short("i")
              .long("index")
-             .help("Automatic render index page [index.html, index.html]"))
+             .help("Automatic render index page [index.html, index.htm]"))
         .arg(clap::Arg::with_name("port")
              .short("p")
              .long("port")
@@ -136,7 +136,6 @@ impl Handler for MainHandler {
                 let mut resp = Response::with(status::Ok);
                 let metadata = f.metadata().unwrap();
                 if metadata.is_dir() {
-                    resp.headers.set(headers::ContentType::html());
                     let mut rows = Vec::new();
 
                     let path_prefix = req.url.path()
@@ -198,6 +197,7 @@ impl Handler for MainHandler {
                             link_style, link, file_name, file_modified, file_size
                         ));
                     }
+                    resp.headers.set(headers::ContentType::html());
                     resp.set_mut(format!(
                         "<html><body>{} <hr /><table>{}</table></body></html>",
                         breadcrumb, rows.join("\n")
