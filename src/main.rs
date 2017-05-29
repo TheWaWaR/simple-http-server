@@ -13,6 +13,7 @@ use std::os::unix::ffi::OsStrExt;
 
 use iron::headers;
 use iron::status;
+use iron::mime;
 use iron::{Iron, Request, Response, IronResult, Set, Chain, Handler, AfterMiddleware};
 use pretty_bytes::converter::convert;
 use chrono::{DateTime, Local, TimeZone};
@@ -126,6 +127,7 @@ impl Handler for MainHandler {
                     bread_links.reverse();
                     bread_links.join(" / ")
                 } else { root_link };
+
                 if metadata.is_dir() {
                     resp.headers.set(headers::ContentType::html());
                     let mut files = Vec::new();
@@ -160,22 +162,26 @@ impl Handler for MainHandler {
                             link_style, link, file_name, file_modified, file_size
                         ));
                     }
-                    resp = resp.set(format!(
+                    resp.set_mut(format!(
                         "<html><body>{} <hr /><table>{}</table></body></html>",
                         breadcrumb, files.join("\n")
                     ));
                 } else {
-                    resp.headers.set(headers::ContentDisposition {
-                        disposition: headers::DispositionType::Attachment,
-                        parameters: vec![headers::DispositionParam::Filename(
-                            headers::Charset::Ext("utf-8".to_owned()), // The character set for the bytes of the filename
-                            None, // The optional language tag (see `language-tag` crate)
-                            path.file_name().unwrap().as_bytes().to_vec() // the actual bytes of the filename
-                        )]
-                    });
-                    resp = resp.set(path);
-                    let mime: iron::mime::Mime = "application/octet-stream".parse().unwrap();
-                    resp.headers.set(headers::ContentType(mime));
+                    resp.set_mut(path.as_path());
+                    if resp.headers.get::<headers::ContentType>() == Some(
+                        &headers::ContentType(mime::Mime(mime::TopLevel::Text, mime::SubLevel::Plain, vec![]))
+                    ) {
+                        resp.headers.set(headers::ContentDisposition {
+                            disposition: headers::DispositionType::Attachment,
+                            parameters: vec![headers::DispositionParam::Filename(
+                                headers::Charset::Ext("utf-8".to_owned()), // The character set for the bytes of the filename
+                                None, // The optional language tag (see `language-tag` crate)
+                                path.file_name().unwrap().as_bytes().to_vec() // the actual bytes of the filename
+                            )]
+                        });
+                        let default_mime: iron::mime::Mime = "application/octet-stream".parse().unwrap();
+                        resp.headers.set(headers::ContentType(default_mime));
+                    }
                 };
                 Ok(resp)
             },
