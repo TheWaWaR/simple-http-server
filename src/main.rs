@@ -191,7 +191,7 @@ impl Handler for MainHandler {
                         link.push(&file_name);
                         let link = link.join("/");
                         rows.push(format!(
-                            "<tr><td><a {} href=\"/{}\">{}</a></td> <td style=\"color:#999;\">[{}]</td> <td><bold>{}</bold></td></tr>",
+                            "<tr><td><a {} href=\"/{}\">{}</a></td> <td style=\"color:#888;\">[{}]</td> <td><bold>{}</bold></td></tr>",
                             link_style, link, file_name, file_modified, file_size
                         ));
                     }
