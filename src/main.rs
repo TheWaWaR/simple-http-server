@@ -105,7 +105,7 @@ impl Handler for MainHandler {
                     .into_iter()
                     .filter(|s| !s.is_empty())
                     .collect::<Vec<&str>>();
-                let root_link = "<a href=\"/\">[root]</a>".to_owned();
+                let root_link = "<a href=\"/\">[ROOT]</a>".to_owned();
                 let breadcrumb = if path_prefix.len() > 0 {
                     let mut breadcrumb = path_prefix.clone();
                     let mut bread_links: Vec<String> = Vec::new();
@@ -129,7 +129,7 @@ impl Handler for MainHandler {
                         link.pop();
                         files.push(format!(
                             "<tr><td><a href=\"/{}\"><strong>{}</strong></a></td> <td></td> <td></td></tr>",
-                            link.join("/"), ".."
+                            link.join("/"), "[Parent Directory]"
                         ));
                     }
                     for entry in fs::read_dir(&path).unwrap() {
