@@ -7,6 +7,8 @@ extern crate iron;
 extern crate multipart;
 
 use std::env;
+use std::str::FromStr;
+use std::net::IpAddr;
 use std::fs::{self, File};
 use std::path::{PathBuf};
 use std::error::Error;
@@ -51,6 +53,17 @@ fn main() {
              .short("u")
              .long("upload")
              .help("Enable upload files (multiple select)"))
+        .arg(clap::Arg::with_name("ip")
+             .long("ip")
+             .takes_value(true)
+             .default_value("0.0.0.0")
+             .validator(|s| {
+                 match IpAddr::from_str(&s) {
+                     Ok(_) => Ok(()),
+                     Err(e) => Err(e.description().to_string())
+                 }
+             })
+             .help("IP address to bind"))
         .arg(clap::Arg::with_name("port")
              .short("p")
              .long("port")
@@ -78,7 +91,7 @@ fn main() {
                      Err(e) => Err(e.description().to_string())
                  }
              })
-             .help("How many http threads"))
+             .help("How many worker threads"))
         .get_matches();
     let root = matches
         .value_of("root")
@@ -86,6 +99,7 @@ fn main() {
         .unwrap_or(env::current_dir().unwrap());
     let index = matches.is_present("index");
     let upload = matches.is_present("upload");
+    let ip = matches.value_of("ip").unwrap();
     let port = matches
         .value_of("port")
         .unwrap()
@@ -97,7 +111,7 @@ fn main() {
         .parse::<u8>()
         .unwrap();
 
-    let addr = format!("0.0.0.0:{}", port);
+    let addr = format!("{}:{}", ip, port);
     println!("  Index: {}, Upload: {}, Threads: {}",
              Blue.paint(index.to_string()),
              Blue.paint(upload.to_string()),
