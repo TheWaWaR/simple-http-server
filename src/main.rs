@@ -96,9 +96,11 @@ fn main() {
         .unwrap();
 
     let addr = format!("0.0.0.0:{}", port);
+    println!("  Index: {}, Upload: {}, Threads: {}",
+             Blue.paint(index.to_string()),
+             Blue.paint(upload.to_string()),
+             Blue.paint(threads.to_string()));
     println!("   Root: {}", Blue.paint(root.to_str().unwrap()));
-    println!("  Index: {}", Blue.paint(index.to_string()));
-    println!(" Upload: {}", Blue.paint(upload.to_string()));
     println!("Address: {}", Blue.paint(format!("http://{}", addr)));
     println!("======== [{}] ========", Blue.paint(now_string()));
 
