@@ -2,7 +2,7 @@
 ``` bash
 cargo install simple-http-server
 rehash
-simple-http-server -p 3000
+simple-http-server -h
 ```
 
 # Features
