@@ -2,6 +2,7 @@ extern crate clap;
 extern crate iron;
 extern crate pretty_bytes;
 extern crate chrono;
+extern crate ansi_term;
 
 use std::env;
 use std::fs::{self, File};
@@ -15,6 +16,7 @@ use iron::status;
 use iron::{Iron, Request, Response, IronResult, Set, Chain, Handler, AfterMiddleware};
 use pretty_bytes::converter::convert;
 use chrono::{DateTime, Local, TimeZone};
+use ansi_term::Colour::{Red, Green, Yellow, Blue};
 
 
 fn main() {
@@ -76,10 +78,13 @@ fn main() {
         .parse::<u8>()
         .unwrap();
 
-    println!("[Root]: {}", root.to_str().unwrap());
+    println!("[Root]: {}", Blue.paint(root.to_str().unwrap()));
     let addr = format!("0.0.0.0:{}", port);
-    println!("[Listening ({} threads)]: http://{}", threads, addr);
-    println!("[{}]: ========== Server Started! ==========", now_string());
+    println!("[Listening on]: {}",
+             Blue.paint(format!("http://{}", addr)));
+    println!("====== [{}] ({} threads) ======",
+             Blue.paint(now_string()),
+             Blue.paint(threads.to_string()));
 
     let mut chain = Chain::new(MainHandler{root: root});
     chain.link_after(RequestLogger);
@@ -131,6 +136,8 @@ impl Handler for MainHandler {
                             "<tr><td><a href=\"/{}\"><strong>{}</strong></a></td> <td></td> <td></td></tr>",
                             link.join("/"), "[Parent Directory]"
                         ));
+                    } else {
+                        files.push("<tr><td>&nbsp;</td></tr>".to_owned());
                     }
                     for entry in fs::read_dir(&path).unwrap() {
                         let entry = entry.unwrap();
@@ -181,12 +188,21 @@ impl Handler for MainHandler {
 
 impl AfterMiddleware for RequestLogger {
     fn after(&self, req: &mut Request, resp: Response) -> IronResult<Response> {
+        let status = resp.status.unwrap();
+        let status_str = if status.is_success() {
+            Green.bold().paint(status.to_u16().to_string())
+        } else if status.is_informational() {
+            Yellow.bold().paint(status.to_u16().to_string())
+        } else {
+            Red.bold().paint(status.to_u16().to_string())
+        };
+
         println!(
-            // datetime, remote-addr, status, method, url-path
-            "[{}] - {} - {:?} - {} /{}",
+            // datetime, remote-ip, status, method, url-path
+            "[{}] - {} - {} - {} /{}",
             now_string(),
             req.remote_addr.ip(),
-            resp.status.unwrap(),
+            status_str,
             req.method,
             req.url.as_ref().to_string().splitn(4, '/').collect::<Vec<&str>>().pop().unwrap()
         );
