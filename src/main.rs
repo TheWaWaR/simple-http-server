@@ -1,6 +1,3 @@
-// #[macro_use]
-// extern crate log;
-// extern crate env_logger;
 extern crate clap;
 extern crate iron;
 extern crate pretty_bytes;
@@ -21,7 +18,6 @@ use chrono::{DateTime, UTC, TimeZone};
 
 
 fn main() {
-    // env_logger::init().unwrap();
     let matches = clap::App::new("Simple HTTP Server")
         .arg(clap::Arg::with_name("root")
              .index(1)

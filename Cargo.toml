@@ -11,14 +11,8 @@ repository = "https://github.com/TheWaWaR/simple-http-server"
 log = "0.3.8"
 env_logger = "0.4.3"
 clap = "2.24.2"
-handlebars-iron = "0.24.1"
 # Iron crates
 chrono = "0.3.1"
 pretty-bytes = "0.2.1"
 iron = "^0.5.0"
 router = "0.5.1"
-
-[features]
-## create a feature in your app
-watch = ["handlebars-iron/watch"]
-

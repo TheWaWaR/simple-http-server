@@ -11,5 +11,6 @@ simple-http-server -p 3000
 - [x] Specify directory root
 - [x] Pretty log
 - [x] Nginx like directory view (directory entries, link, filesize, modfiled date)
+- [ ] Breadcrumb
 - [ ] Guess mime type
 - [ ] Upload file <Optional>
