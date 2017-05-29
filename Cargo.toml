@@ -1,6 +1,6 @@
 [package]
 name = "simple-http-server"
-version = "0.3.3"
+version = "0.3.4"
 authors = ["thewawar <thewawar@gmail.com>"]
 license = "MIT"
 description = "SimpleHTTPServer.py"
