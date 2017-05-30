@@ -3,6 +3,7 @@ extern crate clap;
 extern crate pretty_bytes;
 extern crate chrono;
 extern crate ansi_term;
+extern crate url;
 extern crate iron;
 extern crate multipart;
 
@@ -28,8 +29,9 @@ use multipart::server::{Multipart, SaveResult};
 use pretty_bytes::converter::convert;
 use chrono::{DateTime, Local, TimeZone};
 use ansi_term::Colour::{Red, Green, Yellow, Blue};
+use url::percent_encoding::percent_decode;
 
-const ROOT_LINK: &'static str = "<a href=\"/\">[ROOT]</a>";
+const ROOT_LINK: &'static str = "<a href=\"/\"><strong>[Root]</strong></a>";
 
 fn main() {
     let matches = clap::App::new("Simple HTTP Server")
@@ -236,20 +238,22 @@ impl MainHandler {
 
 impl Handler for MainHandler {
     fn handle(&self, req: &mut Request) -> IronResult<Response> {
-        let mut path = self.root.clone();
+        let mut fs_path = self.root.clone();
         for part in req.url.path() {
-            path.push(part);
+            fs_path.push(percent_decode(part.as_bytes())
+                         .decode_utf8().unwrap()
+                         .to_string().as_str());
         }
 
         if self.upload && req.method == method::Post {
-            if let Err((s, msg)) = self.save_files(req, &path) {
+            if let Err((s, msg)) = self.save_files(req, &fs_path) {
                 return error_resp(s, &msg);
             } else {
                 return Ok(Response::with((status::Found, Redirect(req.url.clone()))))
             }
         }
 
-        match File::open(&path) {
+        match File::open(&fs_path) {
             Ok(f) => {
                 let mut resp = Response::with(status::Ok);
                 let metadata = f.metadata().unwrap();
@@ -267,7 +271,7 @@ impl Handler for MainHandler {
                         while breadcrumb.len() > 0 {
                             let link = breadcrumb.join("/");
                             bread_links.push(format!(
-                                "<a href=\"/{link}\">{label}</a>",
+                                "<a href=\"/{link}\"><strong>{label}</strong></a>",
                                 link=link, label=breadcrumb.pop().unwrap().to_owned(),
                             ));
                         }
@@ -281,20 +285,20 @@ impl Handler for MainHandler {
                         link.pop();
                         rows.push(format!(
                             "<tr><td><a href=\"/{link}\"><strong>{label}</strong></a></td> <td></td> <td></td></tr>",
-                            link=link.join("/"), label="[Parent Directory]"
+                            link=link.join("/"), label="[Up]"
                         ));
                     } else {
                         rows.push("<tr><td>&nbsp;</td></tr>".to_owned());
                     }
-                    for entry in fs::read_dir(&path).unwrap() {
+                    for entry in fs::read_dir(&fs_path).unwrap() {
                         let entry = entry.unwrap();
                         let entry_meta = entry.metadata().unwrap();
                         let file_name = entry.file_name().into_string().unwrap();
                         if self.index {
                             for fname in vec!["index.html", "index.htm"] {
                                 if file_name == fname {
-                                    path.push(file_name);
-                                    return self.send_file(resp, &path);
+                                    fs_path.push(file_name);
+                                    return self.send_file(resp, &fs_path);
                                 }
                             }
                         }
@@ -303,9 +307,9 @@ impl Handler for MainHandler {
                         let file_size = convert(entry_meta.len() as f64);
                         let file_type = entry_meta.file_type();
                         let link_style = if file_type.is_dir() {
-                            "style=\"text-decoration: none; font-weight: bold;\"".to_owned()
+                            "style=\"font-weight: bold;\"".to_owned()
                         } else {
-                            "style=\"text-decoration: none;\"".to_owned()
+                            "".to_owned()
                         };
                         let mut link = path_prefix.clone();
                         link.push(&file_name);
@@ -318,7 +322,7 @@ impl Handler for MainHandler {
                     resp.headers.set(headers::ContentType::html());
                     let upload_form = if self.upload {
                         format!(r#"
-<form style="margin-top: 1em;" action="/{path}" method="POST" enctype="multipart/form-data">
+<form style="margin-top:1em; margin-bottom:1em;" action="/{path}" method="POST" enctype="multipart/form-data">
   <input type="file" name="files" accept="*" multiple />
   <input type="submit" value="Upload" />
 </form>
@@ -327,7 +331,12 @@ impl Handler for MainHandler {
                     } else { "".to_owned() };
                     resp.set_mut(format!(
                         r#"
+<!DOCTYPE html>
 <html>
+<head>
+  <meta charset="utf-8">
+  <style> a {{ text-decoration:none; }} </style>
+</head>
 <body>
   {upload_form}
   <div>{breadcrumb}</div>
@@ -340,7 +349,7 @@ impl Handler for MainHandler {
                         rows=rows.join("\n")));
                     Ok(resp)
                 } else {
-                    self.send_file(resp, &path)
+                    self.send_file(resp, &fs_path)
                 }
             },
             Err(e) => error_resp(status::NotFound, e.description().to_string().as_str())
@@ -402,12 +411,13 @@ impl AfterMiddleware for RequestLogger {
 
         println!(
             // datetime, remote-ip, status-code, method, url-path
-            "[{}] - {} - {} - {} /{}",
+            "[{}] - {} - {} - {} {}",
             now_string(),
             req.remote_addr.ip(),
             status_str,
             req.method,
-            req.url.as_ref().to_string().splitn(4, '/').collect::<Vec<&str>>().pop().unwrap()
+            percent_decode(req.url.as_ref().path().as_bytes())
+                .decode_utf8().unwrap().to_string()
         );
         Ok(resp)
     }
