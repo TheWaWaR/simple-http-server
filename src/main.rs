@@ -183,7 +183,18 @@ fn encode_link_path(path: &Vec<String>) -> String {
 
 fn error_resp(s: status::Status, msg: &str)  -> IronResult<Response> {
     let mut resp = Response::with((s, format!(
-        "<html><body>{root_link} <hr /><div>[<strong style=\"color:red;\">ERROR {code}</strong>]: {msg}</div></body></html>",
+        r#"<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+</head>
+<body>
+  {root_link}
+  <hr />
+  <div>[<strong style=color:red;>ERROR {code}</strong>]: {msg}</div>
+</body>
+</html>
+"#,
         root_link=ROOT_LINK,
         code=s.to_u16(),
         msg=msg
@@ -205,9 +216,11 @@ impl MainHandler {
                         for (_, files) in entries.files {
                             for file in files {
                                 let mut target_path = path.clone();
-                                target_path.push(file.filename.unwrap());
+                                target_path.push(file.filename.clone().unwrap());
                                 if let Err(errno) = fs::copy(file.path, target_path) {
                                     return Err((status::InternalServerError, format!("Copy file failed: {}", errno)));
+                                } else {
+                                    println!("  >> File saved: {}", file.filename.clone().unwrap());
                                 }
                             }
                         }
@@ -280,7 +293,7 @@ impl Handler for MainHandler {
                         bread_links.push(breadcrumb.pop().unwrap().to_owned());
                         while breadcrumb.len() > 0 {
                             bread_links.push(format!(
-                                "<a href=\"/{link}/\"><strong>{label}</strong></a>",
+                                r#"<a href="/{link}/"><strong>{label}</strong></a>"#,
                                 link=encode_link_path(&breadcrumb), label=breadcrumb.pop().unwrap().to_owned(),
                             ));
                         }
@@ -296,11 +309,17 @@ impl Handler for MainHandler {
                             link.push("".to_owned());
                         }
                         rows.push(format!(
-                            "<tr><td><a href=\"/{link}\"><strong>{label}</strong></a></td> <td></td> <td></td></tr>",
-                            link=encode_link_path(&link), label="[Up]"
+                            r#"
+<tr>
+  <td><a href="/{link}"><strong>[Up]</strong></a></td>
+  <td></td>
+  <td></td>
+</tr>
+"#,
+                            link=encode_link_path(&link)
                         ));
                     } else {
-                        rows.push("<tr><td>&nbsp;</td></tr>".to_owned());
+                        rows.push(r#"<tr><td>&nbsp;</td></tr>"#.to_owned());
                     }
                     for entry in fs::read_dir(&fs_path).unwrap() {
                         let entry = entry.unwrap();
@@ -336,8 +355,15 @@ impl Handler for MainHandler {
                         let file_name_label = if entry_meta.is_dir() {
                             format!("{}/", &file_name)
                         } else { file_name.clone() };
+                        // Render one directory entry
                         rows.push(format!(
-                            "<tr><td><a {linkstyle} href=\"/{link}\">{label}</a></td> <td style=\"color:#888;\">[{modified}]</td> <td><bold>{filesize}</bold></td></tr>",
+                            r#"
+<tr>
+  <td><a {linkstyle} href="/{link}">{label}</a></td>
+  <td style="color:#888;">[{modified}]</td>
+  <td><bold>{filesize}</bold></td>
+</tr>
+"#,
                             linkstyle=link_style,
                             link=encode_link_path(&link),
                             label=file_name_label,
@@ -347,17 +373,17 @@ impl Handler for MainHandler {
                     }
                     resp.headers.set(headers::ContentType::html());
                     let upload_form = if self.upload {
-                        format!(r#"
+                        format!(
+                            r#"
 <form style="margin-top:1em; margin-bottom:1em;" action="/{path}" method="POST" enctype="multipart/form-data">
   <input type="file" name="files" accept="*" multiple />
   <input type="submit" value="Upload" />
 </form>
 "#,
-                                path=encode_link_path(&path_prefix))
+                            path=encode_link_path(&path_prefix))
                     } else { "".to_owned() };
                     resp.set_mut(format!(
-                        r#"
-<!DOCTYPE html>
+                        r#"<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
@@ -369,7 +395,8 @@ impl Handler for MainHandler {
   <hr />
   <table>{rows}</table>
 </body>
-</html>"#,
+</html>
+"#,
                         upload_form=upload_form,
                         breadcrumb=breadcrumb,
                         rows=rows.join("\n")));
