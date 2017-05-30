@@ -271,7 +271,7 @@ impl Handler for MainHandler {
                         while breadcrumb.len() > 0 {
                             let link = breadcrumb.join("/");
                             bread_links.push(format!(
-                                "<a href=\"/{link}\"><strong>{label}</strong></a>",
+                                "<a href=\"/{link}/\"><strong>{label}</strong></a>",
                                 link=link, label=breadcrumb.pop().unwrap().to_owned(),
                             ));
                         }
@@ -293,7 +293,11 @@ impl Handler for MainHandler {
                     for entry in fs::read_dir(&fs_path).unwrap() {
                         let entry = entry.unwrap();
                         let entry_meta = entry.metadata().unwrap();
-                        let file_name = entry.file_name().into_string().unwrap();
+                        let mut file_name = entry.file_name().into_string().unwrap();
+                        if entry_meta.is_dir() {
+                            file_name.push('/');
+                        }
+
                         if self.index {
                             for fname in vec!["index.html", "index.htm"] {
                                 if file_name == fname {
