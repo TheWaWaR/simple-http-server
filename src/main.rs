@@ -287,6 +287,7 @@ impl Handler for MainHandler {
                 if metadata.is_dir() {
                     let mut rows = Vec::new();
 
+                    // Breadcrumb navigation
                     let breadcrumb = if path_prefix.len() > 0 {
                         let mut breadcrumb = path_prefix.clone();
                         let mut bread_links: Vec<String> = Vec::new();
@@ -302,6 +303,7 @@ impl Handler for MainHandler {
                         bread_links.join(" / ")
                     } else { ROOT_LINK.to_owned() };
 
+                    // Goto parent directory link
                     if path_prefix.len() > 0 {
                         let mut link = path_prefix.clone();
                         link.pop();
@@ -321,6 +323,8 @@ impl Handler for MainHandler {
                     } else {
                         rows.push(r#"<tr><td>&nbsp;</td></tr>"#.to_owned());
                     }
+
+                    // Directory entries
                     for entry in fs::read_dir(&fs_path).unwrap() {
                         let entry = entry.unwrap();
                         let entry_meta = entry.metadata().unwrap();
@@ -329,32 +333,38 @@ impl Handler for MainHandler {
                         if self.index {
                             for fname in vec!["index.html", "index.htm"] {
                                 if file_name == fname {
+                                    // Automatic render index page
                                     fs_path.push(file_name);
                                     return self.send_file(resp, &fs_path);
                                 }
                             }
                         }
+                        // * Entry.modified
                         let file_modified = system_time_to_date_time(entry_meta.modified().unwrap())
                             .format("%Y-%m-%d %H:%M:%S").to_string();
+                        // * Entry.filesize
                         let file_size = if entry_meta.is_dir() {
                             "-".to_owned()
                         } else {
                             convert(entry_meta.len() as f64)
                         };
-                        let file_type = entry_meta.file_type();
-                        let link_style = if file_type.is_dir() {
+                        // * Entry.linkstyle
+                        let link_style = if entry_meta.is_dir() {
                             "style=\"font-weight: bold;\"".to_owned()
                         } else {
                             "".to_owned()
                         };
+                        // * Entry.link
                         let mut link = path_prefix.clone();
                         link.push(file_name.clone());
                         if entry_meta.is_dir() {
                             link.push("".to_owned());
                         }
+                        // * Entry.label
                         let file_name_label = if entry_meta.is_dir() {
                             format!("{}/", &file_name)
                         } else { file_name.clone() };
+
                         // Render one directory entry
                         rows.push(format!(
                             r#"
@@ -371,7 +381,8 @@ impl Handler for MainHandler {
                             filesize=file_size
                         ));
                     }
-                    resp.headers.set(headers::ContentType::html());
+
+                    // Optinal upload form
                     let upload_form = if self.upload {
                         format!(
                             r#"
@@ -382,6 +393,8 @@ impl Handler for MainHandler {
 "#,
                             path=encode_link_path(&path_prefix))
                     } else { "".to_owned() };
+
+                    // Put all parts together
                     resp.set_mut(format!(
                         r#"<!DOCTYPE html>
 <html>
@@ -400,6 +413,8 @@ impl Handler for MainHandler {
                         upload_form=upload_form,
                         breadcrumb=breadcrumb,
                         rows=rows.join("\n")));
+
+                    resp.headers.set(headers::ContentType::html());
                     Ok(resp)
                 } else {
                     self.send_file(resp, &fs_path)
