@@ -29,7 +29,7 @@ use multipart::server::{Multipart, SaveResult};
 use pretty_bytes::converter::convert;
 use chrono::{DateTime, Local, TimeZone};
 use ansi_term::Colour::{Red, Green, Yellow, Blue};
-use url::percent_encoding::percent_decode;
+use url::percent_encoding::{percent_decode, utf8_percent_encode, PATH_SEGMENT_ENCODE_SET};
 
 const ROOT_LINK: &'static str = "<a href=\"/\"><strong>[Root]</strong></a>";
 
@@ -112,6 +112,7 @@ fn main() {
              })
              .help("How many worker threads"))
         .get_matches();
+
     let root = matches
         .value_of("root")
         .map(|s| PathBuf::from(s))
@@ -172,6 +173,12 @@ impl Error for AuthError {
     fn description(&self) -> &str {
         "authentication error"
     }
+}
+
+fn encode_link_path(path: &Vec<String>) -> String {
+    path.iter().map(|s| {
+        utf8_percent_encode(s, PATH_SEGMENT_ENCODE_SET).to_string()
+    }).collect::<Vec<String>>().join("/")
 }
 
 fn error_resp(s: status::Status, msg: &str)  -> IronResult<Response> {
@@ -239,10 +246,17 @@ impl MainHandler {
 impl Handler for MainHandler {
     fn handle(&self, req: &mut Request) -> IronResult<Response> {
         let mut fs_path = self.root.clone();
-        for part in req.url.path() {
-            fs_path.push(percent_decode(part.as_bytes())
-                         .decode_utf8().unwrap()
-                         .to_string().as_str());
+        let path_prefix = req.url.path()
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                percent_decode(s.as_bytes())
+                    .decode_utf8().unwrap()
+                    .to_string()
+            })
+            .collect::<Vec<String>>();
+        for part in path_prefix.iter() {
+            fs_path.push(part);
         }
 
         if self.upload && req.method == method::Post {
@@ -260,19 +274,14 @@ impl Handler for MainHandler {
                 if metadata.is_dir() {
                     let mut rows = Vec::new();
 
-                    let path_prefix = req.url.path()
-                        .into_iter()
-                        .filter(|s| !s.is_empty())
-                        .collect::<Vec<&str>>();
                     let breadcrumb = if path_prefix.len() > 0 {
                         let mut breadcrumb = path_prefix.clone();
                         let mut bread_links: Vec<String> = Vec::new();
                         bread_links.push(breadcrumb.pop().unwrap().to_owned());
                         while breadcrumb.len() > 0 {
-                            let link = breadcrumb.join("/");
                             bread_links.push(format!(
                                 "<a href=\"/{link}/\"><strong>{label}</strong></a>",
-                                link=link, label=breadcrumb.pop().unwrap().to_owned(),
+                                link=encode_link_path(&breadcrumb), label=breadcrumb.pop().unwrap().to_owned(),
                             ));
                         }
                         bread_links.push(ROOT_LINK.to_owned());
@@ -284,11 +293,11 @@ impl Handler for MainHandler {
                         let mut link = path_prefix.clone();
                         link.pop();
                         if link.len() > 0 {
-                            link.push("");
+                            link.push("".to_owned());
                         }
                         rows.push(format!(
                             "<tr><td><a href=\"/{link}\"><strong>{label}</strong></a></td> <td></td> <td></td></tr>",
-                            link=link.join("/"), label="[Up]"
+                            link=encode_link_path(&link), label="[Up]"
                         ));
                     } else {
                         rows.push("<tr><td>&nbsp;</td></tr>".to_owned());
@@ -296,10 +305,7 @@ impl Handler for MainHandler {
                     for entry in fs::read_dir(&fs_path).unwrap() {
                         let entry = entry.unwrap();
                         let entry_meta = entry.metadata().unwrap();
-                        let mut file_name = entry.file_name().into_string().unwrap();
-                        if entry_meta.is_dir() {
-                            file_name.push('/');
-                        }
+                        let file_name = entry.file_name().into_string().unwrap();
 
                         if self.index {
                             for fname in vec!["index.html", "index.htm"] {
@@ -323,11 +329,20 @@ impl Handler for MainHandler {
                             "".to_owned()
                         };
                         let mut link = path_prefix.clone();
-                        link.push(&file_name);
-                        let link = link.join("/");
+                        link.push(file_name.clone());
+                        if entry_meta.is_dir() {
+                            link.push("".to_owned());
+                        }
+                        let file_name_label = if entry_meta.is_dir() {
+                            format!("{}/", &file_name)
+                        } else { file_name.clone() };
                         rows.push(format!(
-                            "<tr><td><a {} href=\"/{}\">{}</a></td> <td style=\"color:#888;\">[{}]</td> <td><bold>{}</bold></td></tr>",
-                            link_style, link, file_name, file_modified, file_size
+                            "<tr><td><a {linkstyle} href=\"/{link}\">{label}</a></td> <td style=\"color:#888;\">[{modified}]</td> <td><bold>{filesize}</bold></td></tr>",
+                            linkstyle=link_style,
+                            link=encode_link_path(&link),
+                            label=file_name_label,
+                            modified=file_modified,
+                            filesize=file_size
                         ));
                     }
                     resp.headers.set(headers::ContentType::html());
@@ -338,7 +353,7 @@ impl Handler for MainHandler {
   <input type="submit" value="Upload" />
 </form>
 "#,
-                                path=path_prefix.join("/"))
+                                path=encode_link_path(&path_prefix))
                     } else { "".to_owned() };
                     resp.set_mut(format!(
                         r#"
