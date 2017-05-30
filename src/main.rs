@@ -102,7 +102,7 @@ fn main() {
                  match s.parse::<u8>() {
                      Ok(v) => {
                          if v > 0 { Ok(()) } else {
-                             Err("Nagetive threads".to_owned())
+                             Err("Not positive number".to_owned())
                          }
                      }
                      Err(e) => Err(e.description().to_string())
