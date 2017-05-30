@@ -311,7 +311,11 @@ impl Handler for MainHandler {
                         }
                         let file_modified = system_time_to_date_time(entry_meta.modified().unwrap())
                             .format("%Y-%m-%d %H:%M:%S").to_string();
-                        let file_size = convert(entry_meta.len() as f64);
+                        let file_size = if entry_meta.is_dir() {
+                            "-".to_owned()
+                        } else {
+                            convert(entry_meta.len() as f64)
+                        };
                         let file_type = entry_meta.file_type();
                         let link_style = if file_type.is_dir() {
                             "style=\"font-weight: bold;\"".to_owned()
