@@ -22,6 +22,9 @@ simple-http-server -h
 - [x] Nginx like directory view (directory entries, link, filesize, modfiled date)
 - [x] Breadcrumb navigation
 - [x] Guess mime type
+- [x] HTTP cache
+  - Sending Last-Modified / ETag
+  - Replying 304 to If-Modified-Since
 - [x] (default disabled) Automatic render index page [index.html, index.htm]
 - [x] (default disabled) Upload file
 - [x] (default disabled) HTTP Basic Authentication (by username:password)

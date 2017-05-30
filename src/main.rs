@@ -1,7 +1,9 @@
 #[macro_use]
 extern crate clap;
 extern crate pretty_bytes;
+extern crate time;
 extern crate chrono;
+extern crate filetime;
 extern crate ansi_term;
 extern crate url;
 extern crate iron;
@@ -13,14 +15,12 @@ use std::str::FromStr;
 use std::io::Write;
 use std::net::IpAddr;
 use std::fs::{self, File};
-use std::path::{PathBuf};
+use std::path::{PathBuf, Path};
 use std::error::Error;
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::os::unix::ffi::OsStrExt;
 
 use iron::headers;
 use iron::status;
-use iron::mime;
 use iron::method;
 use iron::modifiers::Redirect;
 use iron::{Iron, Request, Response, IronResult, IronError, Set, Chain, Handler,
@@ -57,6 +57,9 @@ fn main() {
              .short("u")
              .long("upload")
              .help("Enable upload files (multiple select)"))
+        .arg(clap::Arg::with_name("nocache")
+             .long("nocache")
+             .help("Disable http cache"))
         .arg(clap::Arg::with_name("ip")
              .long("ip")
              .takes_value(true)
@@ -119,6 +122,7 @@ fn main() {
         .unwrap_or(env::current_dir().unwrap());
     let index = matches.is_present("index");
     let upload = matches.is_present("upload");
+    let cache = !matches.is_present("nocache");
     let ip = matches.value_of("ip").unwrap();
     let port = matches
         .value_of("port")
@@ -133,16 +137,17 @@ fn main() {
         .unwrap();
 
     let addr = format!("{}:{}", ip, port);
-    println!("  Index: {}, Upload: {}, Threads: {}, Auth: {}",
+    println!("  Index: {}, Upload: {}, Cache: {}, Threads: {}, Auth: {}",
              Blue.paint(index.to_string()),
              Blue.paint(upload.to_string()),
+             Blue.paint(cache.to_string()),
              Blue.paint(threads.to_string()),
              Blue.paint(auth.unwrap_or("disabled").to_string()));
     println!("   Root: {}", Blue.paint(root.to_str().unwrap()));
     println!("Address: {}", Blue.paint(format!("http://{}", addr)));
     println!("======== [{}] ========", Blue.paint(now_string()));
 
-    let mut chain = Chain::new(MainHandler{root, index, upload});
+    let mut chain = Chain::new(MainHandler{root, index, upload, cache});
     if let Some(auth) = auth {
         chain.link_before(AuthChecker::new(auth));
     }
@@ -156,7 +161,13 @@ fn main() {
     };
 }
 
-struct MainHandler { root: PathBuf, index: bool, upload: bool }
+struct MainHandler {
+    root: PathBuf,
+    index: bool,
+    upload: bool,
+    cache: bool
+}
+
 struct AuthChecker { username: String, password: String }
 struct RequestLogger;
 
@@ -236,23 +247,45 @@ impl MainHandler {
         }
     }
 
-    fn send_file(&self, mut resp: Response, path: &PathBuf) -> IronResult<Response> {
-        resp.set_mut(path.as_path());
-        if resp.headers.get::<headers::ContentType>() == Some(
-            &headers::ContentType(mime::Mime(mime::TopLevel::Text, mime::SubLevel::Plain, vec![]))
-        ) {
-            resp.headers.set(headers::ContentDisposition {
-                disposition: headers::DispositionType::Attachment,
-                parameters: vec![headers::DispositionParam::Filename(
-                    headers::Charset::Ext("utf-8".to_owned()), // The character set for the bytes of the filename
-                    None, // The optional language tag (see `language-tag` crate)
-                    path.file_name().unwrap().as_bytes().to_vec() // the actual bytes of the filename
-                )]
-            });
-            let default_mime: iron::mime::Mime = "application/octet-stream".parse().unwrap();
-            resp.headers.set(headers::ContentType(default_mime));
+    fn send_file<P: AsRef<Path>>(&self, req: &Request, path: P) -> IronResult<Response> {
+        use iron::headers::{IfModifiedSince, CacheControl, LastModified, CacheDirective, HttpDate};
+        use iron::headers::{ContentLength, ContentType, ETag, EntityTag};
+        use iron::method::Method;
+        use iron::mime::{Mime, TopLevel, SubLevel};
+        use iron::modifiers::Header;
+        use filetime::FileTime;
+
+        let path = path.as_ref();
+        let metadata = fs::metadata(path);
+        let metadata = try!(metadata.map_err(|e| IronError::new(e, status::InternalServerError)));
+        let mut response = if req.method == Method::Head {
+            let has_ct = req.headers.get::<ContentType>();
+            let cont_type = match has_ct {
+                None => ContentType(Mime(TopLevel::Text, SubLevel::Plain, vec![])),
+                Some(t) => t.clone()
+            };
+            Response::with((status::Ok, Header(cont_type), Header(ContentLength(metadata.len()))))
+        } else {
+            Response::with((status::Ok, path))
+        };
+
+        if self.cache {
+            static SECONDS: u32 = 7 * 24 * 3600; // max-age: 7.days()
+            let time = FileTime::from_last_modification_time(&metadata);
+            let modified = time::Timespec::new(time.seconds() as i64, 0);
+
+            if let Some(IfModifiedSince(HttpDate(if_modified_since))) = req.headers.get::<IfModifiedSince>().cloned() {
+                if modified <= if_modified_since.to_timespec() {
+                    return Ok(Response::with(status::NotModified))
+                }
+            };
+
+            let cache = vec![CacheDirective::Public, CacheDirective::MaxAge(SECONDS)];
+            response.headers.set(CacheControl(cache));
+            response.headers.set(LastModified(HttpDate(time::at(modified))));
+            response.headers.set(ETag(EntityTag::weak(format!("{0:x}-{1:x}.{2:x}", metadata.len(), modified.sec, modified.nsec))));
         }
-        return Ok(resp)
+        Ok(response)
     }
 }
 
@@ -335,7 +368,7 @@ impl Handler for MainHandler {
                                 if file_name == fname {
                                     // Automatic render index page
                                     fs_path.push(file_name);
-                                    return self.send_file(resp, &fs_path);
+                                    return self.send_file(req, &fs_path);
                                 }
                             }
                         }
@@ -417,7 +450,7 @@ impl Handler for MainHandler {
                     resp.headers.set(headers::ContentType::html());
                     Ok(resp)
                 } else {
-                    self.send_file(resp, &fs_path)
+                    self.send_file(req, &fs_path)
                 }
             },
             Err(e) => error_resp(status::NotFound, e.description().to_string().as_str())
