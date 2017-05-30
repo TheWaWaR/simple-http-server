@@ -25,3 +25,4 @@ simple-http-server -h
 - [x] (default disabled) Automatic render index page [index.html, index.htm]
 - [x] (default disabled) Upload file
 - [x] (default disabled) HTTP Basic Authentication (by username:password)
+- [ ] Sort by: filename, filesize, modifled
