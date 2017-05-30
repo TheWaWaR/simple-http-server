@@ -283,6 +283,9 @@ impl Handler for MainHandler {
                     if path_prefix.len() > 0 {
                         let mut link = path_prefix.clone();
                         link.pop();
+                        if link.len() > 0 {
+                            link.push("");
+                        }
                         rows.push(format!(
                             "<tr><td><a href=\"/{link}\"><strong>{label}</strong></a></td> <td></td> <td></td></tr>",
                             link=link.join("/"), label="[Up]"
