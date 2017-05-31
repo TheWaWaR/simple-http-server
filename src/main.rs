@@ -4,15 +4,16 @@ extern crate pretty_bytes;
 extern crate time;
 extern crate chrono;
 extern crate filetime;
-extern crate ansi_term;
+extern crate termcolor;
 extern crate url;
 extern crate iron;
 extern crate multipart;
 
+mod color;
+
 use std::env;
 use std::fmt;
 use std::str::FromStr;
-use std::io::Write;
 use std::net::IpAddr;
 use std::fs;
 use std::path::{PathBuf, Path};
@@ -28,8 +29,10 @@ use iron::{Iron, Request, Response, IronResult, IronError, Set, Chain, Handler,
 use multipart::server::{Multipart, SaveResult};
 use pretty_bytes::converter::convert;
 use chrono::{DateTime, Local, TimeZone};
-use ansi_term::Colour::{Red, Green, Yellow, Blue};
+use termcolor::{Color, ColorSpec};
 use url::percent_encoding::{percent_decode, utf8_percent_encode, PATH_SEGMENT_ENCODE_SET};
+
+use color::{Printer, build_spec};
 
 const ROOT_LINK: &'static str = "<a href=\"/\"><strong>[Root]</strong></a>";
 
@@ -136,27 +139,41 @@ fn main() {
         .parse::<u8>()
         .unwrap();
 
+    let printer = Printer::new();
+    let color_blue = Some(build_spec(Some(Color::Blue), false));
     let addr = format!("{}:{}", ip, port);
-    println!("  Index: {}, Upload: {}, Cache: {}, Threads: {}, Auth: {}",
-             Blue.paint(index.to_string()),
-             Blue.paint(upload.to_string()),
-             Blue.paint(cache.to_string()),
-             Blue.paint(threads.to_string()),
-             Blue.paint(auth.unwrap_or("disabled").to_string()));
-    println!("   Root: {}", Blue.paint(root.to_str().unwrap()));
-    println!("Address: {}", Blue.paint(format!("http://{}", addr)));
-    println!("======== [{}] ========", Blue.paint(now_string()));
+    printer.println_out(
+        "Index: {}, Upload: {}, Cache: {}, Threads: {}, Auth: {}\n\
+         Root: {}\n\
+         Address: {}\n\
+         ======== [{}] ========",
+        &vec![
+            index.to_string(),
+            upload.to_string(),
+            cache.to_string(),
+            threads.to_string(),
+            auth.unwrap_or("disabled").to_string(),
+            root.to_str().unwrap().to_owned(),
+            format!("http://{}", addr),
+            now_string()
+        ].iter()
+            .map(|s| (s.as_str(), &color_blue))
+            .collect::<Vec<(&str, &Option<ColorSpec>)>>()
+    ).unwrap();
 
     let mut chain = Chain::new(MainHandler{root, index, upload, cache});
     if let Some(auth) = auth {
         chain.link_before(AuthChecker::new(auth));
     }
-    chain.link_after(RequestLogger);
+    chain.link_after(RequestLogger{ printer: Printer::new() });
     let mut server = Iron::new(chain);
     server.threads = threads as usize;
     if let Err(e) = server.http(&addr) {
-        writeln!(std::io::stderr(), "{}: Can not bind on {}, {}",
-                 Red.bold().paint("ERROR"), addr, e).unwrap();
+        printer.println_err("{}: Can not bind on {}, {}", &vec![
+            ("ERROR", &Some(build_spec(Some(Color::Red), true))),
+            (addr.as_str(), &None),
+            (e.to_string().as_str(), &None)
+        ]).unwrap();
         std::process::exit(1);
     };
 }
@@ -169,7 +186,7 @@ struct MainHandler {
 }
 
 struct AuthChecker { username: String, password: String }
-struct RequestLogger;
+struct RequestLogger { printer: Printer }
 
 #[derive(Debug)]
 struct AuthError;
@@ -501,24 +518,24 @@ impl BeforeMiddleware for AuthChecker {
 impl AfterMiddleware for RequestLogger {
     fn after(&self, req: &mut Request, resp: Response) -> IronResult<Response> {
         let status = resp.status.unwrap();
-        let status_str = if status.is_success() {
-            Green.bold().paint(status.to_u16().to_string())
+        let status_color = if status.is_success() {
+            Some(build_spec(Some(Color::Green), true))
         } else if status.is_informational() || status.is_redirection() {
-            Yellow.bold().paint(status.to_u16().to_string())
+            Some(build_spec(Some(Color::Yellow), true))
         } else {
-            Red.bold().paint(status.to_u16().to_string())
+            Some(build_spec(Some(Color::Red), true))
         };
-
-        println!(
+        self.printer.println_out(
             // datetime, remote-ip, status-code, method, url-path
             "[{}] - {} - {} - {} {}",
-            now_string(),
-            req.remote_addr.ip(),
-            status_str,
-            req.method,
-            percent_decode(req.url.as_ref().path().as_bytes())
-                .decode_utf8().unwrap().to_string()
-        );
+            &vec![
+                (now_string().as_str(), &None),
+                (req.remote_addr.ip().to_string().as_str(), &None),
+                (status.to_u16().to_string().as_str(), &status_color),
+                (req.method.to_string().as_str(), &None),
+                (percent_decode(req.url.as_ref().path().as_bytes())
+                 .decode_utf8().unwrap().to_string().as_str(), &None)
+            ]).unwrap();
         Ok(resp)
     }
 }
