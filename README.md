@@ -30,4 +30,4 @@ simple-http-server -h
 - [x] (default disabled) Upload file
 - [x] (default disabled) HTTP Basic Authentication (by username:password)
 - [ ] Sort by: filename, filesize, modifled
-- [ ] HTTPS support
+- [x] HTTPS support
