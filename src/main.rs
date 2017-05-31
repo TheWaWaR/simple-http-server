@@ -8,6 +8,7 @@ extern crate termcolor;
 extern crate url;
 extern crate iron;
 extern crate multipart;
+extern crate hyper_native_tls;
 
 mod color;
 
@@ -63,6 +64,24 @@ fn main() {
         .arg(clap::Arg::with_name("nocache")
              .long("nocache")
              .help("Disable http cache"))
+        .arg(clap::Arg::with_name("cert")
+             .long("cert")
+             .takes_value(true)
+             .validator(|s| {
+                 match fs::metadata(s) {
+                     Ok(metadata) => {
+                         if metadata.is_file() { Ok(()) } else {
+                             Err("Not a regular file".to_owned())
+                         }
+                     },
+                     Err(e) => Err(e.description().to_string())
+                 }
+             })
+             .help("TLS/SSL certificate (pkcs#12 format)"))
+        .arg(clap::Arg::with_name("certpass").
+             long("certpass")
+             .takes_value(true)
+             .help("TLS/SSL certificate password"))
         .arg(clap::Arg::with_name("ip")
              .long("ip")
              .takes_value(true)
@@ -126,6 +145,8 @@ fn main() {
     let index = matches.is_present("index");
     let upload = matches.is_present("upload");
     let cache = !matches.is_present("nocache");
+    let cert = matches.value_of("cert");
+    let certpass = matches.value_of("certpass");
     let ip = matches.value_of("ip").unwrap();
     let port = matches
         .value_of("port")
@@ -140,24 +161,28 @@ fn main() {
         .unwrap();
 
     let printer = Printer::new();
-    let color_blue = Some(build_spec(Some(Color::Blue), false));
+    let color_magenta = Some(build_spec(Some(Color::Magenta), false));
     let addr = format!("{}:{}", ip, port);
     printer.println_out(
-        "Index: {}, Upload: {}, Cache: {}, Threads: {}, Auth: {}\n\
-         Root: {}\n\
-         Address: {}\n\
-         ======== [{}] ========",
+        r#"  Index: {}, Upload: {}, Cache: {}, Threads: {}, Auth: {}
+  https: {}, Cert: {}, Cert-Password: {}
+   Root: {}
+Address: {}
+======== [{}] ========"#,
         &vec![
             index.to_string(),
             upload.to_string(),
             cache.to_string(),
             threads.to_string(),
             auth.unwrap_or("disabled").to_string(),
+            (if cert.is_some() { "enabled" } else { "disabled" }).to_string(),
+            cert.unwrap_or("None").to_owned(),
+            certpass.unwrap_or("").to_owned(),
             root.to_str().unwrap().to_owned(),
-            format!("http://{}", addr),
+            format!("{}://{}", if cert.is_some() {"https"} else {"http"}, addr),
             now_string()
         ].iter()
-            .map(|s| (s.as_str(), &color_blue))
+            .map(|s| (s.as_str(), &color_magenta))
             .collect::<Vec<(&str, &Option<ColorSpec>)>>()
     ).unwrap();
 
@@ -168,7 +193,14 @@ fn main() {
     chain.link_after(RequestLogger{ printer: Printer::new() });
     let mut server = Iron::new(chain);
     server.threads = threads as usize;
-    if let Err(e) = server.http(&addr) {
+    let rv = if let Some(cert) = cert {
+        use hyper_native_tls::NativeTlsServer;
+        let ssl = NativeTlsServer::new(cert, certpass.unwrap_or("")).unwrap();
+        server.https(&addr, ssl)
+    } else {
+        server.http(&addr)
+    };
+    if let Err(e) = rv {
         printer.println_err("{}: Can not bind on {}, {}", &vec![
             ("ERROR", &Some(build_spec(Some(Color::Red), true))),
             (addr.as_str(), &None),
