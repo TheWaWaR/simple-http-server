@@ -14,7 +14,7 @@ use std::fmt;
 use std::str::FromStr;
 use std::io::Write;
 use std::net::IpAddr;
-use std::fs::{self, File};
+use std::fs;
 use std::path::{PathBuf, Path};
 use std::error::Error;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -39,9 +39,9 @@ fn main() {
         .arg(clap::Arg::with_name("root")
              .index(1)
              .validator(|s| {
-                 match File::open(s) {
-                     Ok(f) => {
-                         if f.metadata().unwrap().is_dir() { Ok(()) } else {
+                 match fs::metadata(s) {
+                     Ok(metadata) => {
+                         if metadata.is_dir() { Ok(()) } else {
                              Err("Not directory".to_owned())
                          }
                      },
@@ -313,10 +313,9 @@ impl Handler for MainHandler {
             }
         }
 
-        match File::open(&fs_path) {
-            Ok(f) => {
+        match fs::metadata(&fs_path) {
+            Ok(metadata) => {
                 let mut resp = Response::with(status::Ok);
-                let metadata = f.metadata().unwrap();
                 if metadata.is_dir() {
                     let mut rows = Vec::new();
 
