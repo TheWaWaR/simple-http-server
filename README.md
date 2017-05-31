@@ -15,7 +15,7 @@ simple-http-server -h
 ```
 
 # Features
-- [x] Windows support (console color is working on)
+- [x] Windows support
 - [x] Specify listen address (ip, port)
 - [x] Specify running threads
 - [x] Specify root directory
