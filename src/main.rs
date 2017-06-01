@@ -274,7 +274,7 @@ fn encode_link_path(path: &Vec<String>) -> String {
 fn error_io2iron(err: io::Error) -> IronError {
     let status = match err.kind() {
         io::ErrorKind::PermissionDenied => status::Forbidden,
-        io::ErrorKind::NotFound => status::Forbidden,
+        io::ErrorKind::NotFound => status::NotFound,
         _ => status::InternalServerError
     };
     IronError::new(err, status)
