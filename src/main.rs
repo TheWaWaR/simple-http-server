@@ -335,6 +335,222 @@ impl MainHandler {
         }
     }
 
+    fn list_directory(&self, req: &mut Request, fs_path: &PathBuf, path_prefix: Vec<String>) -> IronResult<Response> {
+        struct Entry {
+            filename: String,
+            metadata: fs::Metadata
+        }
+
+        let mut resp = Response::with(status::Ok);
+        let mut fs_path = fs_path.clone();
+        let mut rows = Vec::new();
+
+        let read_dir = try!(fs::read_dir(&fs_path).map_err(error_io2iron));
+        let mut entries = Vec::new();
+        for entry_result in read_dir {
+            let entry = try!(entry_result.map_err(error_io2iron));
+            entries.push(Entry{
+                filename: entry.file_name().into_string().unwrap(),
+                metadata: try!(entry.metadata().map_err(error_io2iron))
+            });
+        }
+
+        // Breadcrumb navigation
+        let breadcrumb = if path_prefix.len() > 0 {
+            let mut breadcrumb = path_prefix.clone();
+            let mut bread_links: Vec<String> = Vec::new();
+            bread_links.push(breadcrumb.pop().unwrap().to_owned());
+            while breadcrumb.len() > 0 {
+                bread_links.push(format!(
+                    r#"<a href="/{link}/"><strong>{label}</strong></a>"#,
+                    link=encode_link_path(&breadcrumb), label=breadcrumb.pop().unwrap().to_owned(),
+                ));
+            }
+            bread_links.push(ROOT_LINK.to_owned());
+            bread_links.reverse();
+            bread_links.join(" / ")
+        } else { ROOT_LINK.to_owned() };
+
+        // Sort links
+        let sort_links = if self.sort {
+            let mut sort_field = None;
+            let mut order = None;
+            for (k, v) in req.url.as_ref().query_pairs() {
+                if k == "sort" {
+                    sort_field = Some(v.to_string());
+                } else if k == "order" {
+                    order = Some(v.to_string());
+                }
+            }
+            let mut order_labels = BTreeMap::new();
+            for field in vec!["name", "modified", "size"] {
+                if sort_field == Some(field.to_owned()) && order == Some(ORDER_DESC.to_owned()) {
+                    // reverse the order of the field
+                    order_labels.insert(field, ORDER_ASC);
+                }
+            }
+
+            if let Some(field) = sort_field {
+                let reverse = order == Some(ORDER_DESC.to_owned());
+                entries.sort_by(|a, b| {
+                    let rv = match field.as_str() {
+                        "name" => {
+                            a.filename.cmp(&b.filename)
+                        }
+                        "modified" => {
+                            let a = a.metadata.modified().unwrap();
+                            let b = b.metadata.modified().unwrap();
+                            a.cmp(&b)
+                        }
+                        "size" => {
+                            if a.metadata.file_type() == b.metadata.file_type() {
+                                a.metadata.len().cmp(&b.metadata.len())
+                            } else if a.metadata.is_dir() {
+                                Ordering::Less
+                            } else {
+                                Ordering::Greater
+                            }
+                        }
+                        f @ _ => {
+                            panic!("Invalid sort field: {}", f);
+                        }
+                    };
+                    if reverse { rv.reverse() } else { rv }
+                });
+            }
+
+            let mut current_link = path_prefix.clone();
+            current_link.push("".to_owned());
+            format!(r#"
+<tr>
+  <th><a href="/{link}?sort=name&order={name_order}">Name</a></th>
+  <th><a href="/{link}?sort=modified&order={modified_order}">Last modified</a></th>
+  <th><a href="/{link}?sort=size&order={size_order}">Size</a></th>
+</tr>
+<tr><td style="border-top:1px dashed #BBB;" colspan="5"></td></tr>
+"#,
+                    link=encode_link_path(&current_link),
+                    name_order=order_labels.get("name").unwrap_or(&DEFAULT_ORDER),
+                    modified_order=order_labels.get("modified").unwrap_or(&DEFAULT_ORDER),
+                    size_order=order_labels.get("size").unwrap_or(&DEFAULT_ORDER)
+            )
+        }  else { "".to_owned() };
+
+        // Goto parent directory link
+        if path_prefix.len() > 0 {
+            let mut link = path_prefix.clone();
+            link.pop();
+            if link.len() > 0 {
+                link.push("".to_owned());
+            }
+            rows.push(format!(
+                r#"
+<tr>
+  <td><a href="/{link}"><strong>[Up]</strong></a></td>
+  <td></td>
+  <td></td>
+</tr>
+"#,
+                link=encode_link_path(&link)
+            ));
+        } else {
+            rows.push(r#"<tr><td>&nbsp;</td></tr>"#.to_owned());
+        }
+
+        // Directory entries
+        for Entry{ filename, metadata } in entries {
+            if self.index {
+                for fname in vec!["index.html", "index.htm"] {
+                    if filename == fname {
+                        // Automatic render index page
+                        fs_path.push(filename);
+                        return self.send_file(req, &fs_path);
+                    }
+                }
+            }
+            // * Entry.modified
+            let file_modified = system_time_to_date_time(metadata.modified().unwrap())
+                .format("%Y-%m-%d %H:%M:%S").to_string();
+            // * Entry.filesize
+            let file_size = if metadata.is_dir() {
+                "-".to_owned()
+            } else {
+                convert(metadata.len() as f64)
+            };
+            // * Entry.linkstyle
+            let link_style = if metadata.is_dir() {
+                "style=\"font-weight: bold;\"".to_owned()
+            } else {
+                "".to_owned()
+            };
+            // * Entry.link
+            let mut link = path_prefix.clone();
+            link.push(filename.clone());
+            if metadata.is_dir() {
+                link.push("".to_owned());
+            }
+            // * Entry.label
+            let file_name_label = if metadata.is_dir() {
+                format!("{}/", &filename)
+            } else { filename.clone() };
+
+            // Render one directory entry
+            rows.push(format!(
+                r#"
+<tr>
+  <td><a {linkstyle} href="/{link}">{label}</a></td>
+  <td style="color:#888;">[{modified}]</td>
+  <td><bold>{filesize}</bold></td>
+</tr>
+"#,
+                linkstyle=link_style,
+                link=encode_link_path(&link),
+                label=file_name_label,
+                modified=file_modified,
+                filesize=file_size
+            ));
+        }
+
+        // Optinal upload form
+        let upload_form = if self.upload {
+            format!(
+                r#"
+<form style="margin-top:1em; margin-bottom:1em;" action="/{path}" method="POST" enctype="multipart/form-data">
+  <input type="file" name="files" accept="*" multiple />
+  <input type="submit" value="Upload" />
+</form>
+"#,
+                path=encode_link_path(&path_prefix))
+        } else { "".to_owned() };
+
+        // Put all parts together
+        resp.set_mut(format!(
+            r#"<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style> a {{ text-decoration:none; }} </style>
+</head>
+<body>
+  {upload_form}
+  <div>{breadcrumb}</div>
+  <hr />
+  <table>
+    {sort_links}
+    {rows}
+  </table>
+</body>
+</html>
+"#,
+            upload_form=upload_form,
+            breadcrumb=breadcrumb,
+            sort_links=sort_links,
+            rows=rows.join("\n")));
+
+        resp.headers.set(headers::ContentType::html());
+        Ok(resp)
+    }
+
     fn send_file<P: AsRef<Path>>(&self, req: &Request, path: P) -> IronResult<Response> {
         use iron::headers::{IfModifiedSince, CacheControl, LastModified, CacheDirective, HttpDate};
         use iron::headers::{ContentLength, ContentType, ETag, EntityTag,
@@ -517,219 +733,8 @@ impl Handler for MainHandler {
         }
 
         let path_metadata = try!(fs::metadata(&fs_path).map_err(error_io2iron));
-        let mut resp = Response::with(status::Ok);
         if path_metadata.is_dir() {
-            struct Entry {
-                filename: String,
-                metadata: fs::Metadata
-            }
-
-            let mut rows = Vec::new();
-
-            let read_dir = try!(fs::read_dir(&fs_path).map_err(error_io2iron));
-            let mut entries = Vec::new();
-            for entry_result in read_dir {
-                let entry = try!(entry_result.map_err(error_io2iron));
-                entries.push(Entry{
-                    filename: entry.file_name().into_string().unwrap(),
-                    metadata: try!(entry.metadata().map_err(error_io2iron))
-                });
-            }
-
-            // Breadcrumb navigation
-            let breadcrumb = if path_prefix.len() > 0 {
-                let mut breadcrumb = path_prefix.clone();
-                let mut bread_links: Vec<String> = Vec::new();
-                bread_links.push(breadcrumb.pop().unwrap().to_owned());
-                while breadcrumb.len() > 0 {
-                    bread_links.push(format!(
-                        r#"<a href="/{link}/"><strong>{label}</strong></a>"#,
-                        link=encode_link_path(&breadcrumb), label=breadcrumb.pop().unwrap().to_owned(),
-                    ));
-                }
-                bread_links.push(ROOT_LINK.to_owned());
-                bread_links.reverse();
-                bread_links.join(" / ")
-            } else { ROOT_LINK.to_owned() };
-
-            // Sort links
-            let sort_links = if self.sort {
-                let mut sort_field = None;
-                let mut order = None;
-                for (k, v) in req.url.as_ref().query_pairs() {
-                    if k == "sort" {
-                        sort_field = Some(v.to_string());
-                    } else if k == "order" {
-                        order = Some(v.to_string());
-                    }
-                }
-                let mut order_labels = BTreeMap::new();
-                for field in vec!["name", "modified", "size"] {
-                    if sort_field == Some(field.to_owned()) && order == Some(ORDER_DESC.to_owned()) {
-                        // reverse the order of the field
-                        order_labels.insert(field, ORDER_ASC);
-                    }
-                }
-
-                if let Some(field) = sort_field {
-                    let reverse = order == Some(ORDER_DESC.to_owned());
-                    entries.sort_by(|a, b| {
-                        let rv = match field.as_str() {
-                            "name" => {
-                                a.filename.cmp(&b.filename)
-                            }
-                            "modified" => {
-                                let a = a.metadata.modified().unwrap();
-                                let b = b.metadata.modified().unwrap();
-                                a.cmp(&b)
-                            }
-                            "size" => {
-                                if a.metadata.file_type() == b.metadata.file_type() {
-                                    a.metadata.len().cmp(&b.metadata.len())
-                                } else if a.metadata.is_dir() {
-                                    Ordering::Less
-                                } else {
-                                    Ordering::Greater
-                                }
-                            }
-                            f @ _ => {
-                                panic!("Invalid sort field: {}", f);
-                            }
-                        };
-                        if reverse { rv.reverse() } else { rv }
-                    });
-                }
-
-                let mut current_link = path_prefix.clone();
-                current_link.push("".to_owned());
-                format!(r#"
-<tr>
-  <th><a href="/{link}?sort=name&order={name_order}">Name</a></th>
-  <th><a href="/{link}?sort=modified&order={modified_order}">Last modified</a></th>
-  <th><a href="/{link}?sort=size&order={size_order}">Size</a></th>
-</tr>
-<tr><td style="border-top:1px dashed #BBB;" colspan="5"></td></tr>
-"#,
-                        link=encode_link_path(&current_link),
-                        name_order=order_labels.get("name").unwrap_or(&DEFAULT_ORDER),
-                        modified_order=order_labels.get("modified").unwrap_or(&DEFAULT_ORDER),
-                        size_order=order_labels.get("size").unwrap_or(&DEFAULT_ORDER)
-                )
-            }  else { "".to_owned() };
-
-            // Goto parent directory link
-            if path_prefix.len() > 0 {
-                let mut link = path_prefix.clone();
-                link.pop();
-                if link.len() > 0 {
-                    link.push("".to_owned());
-                }
-                rows.push(format!(
-                    r#"
-<tr>
-  <td><a href="/{link}"><strong>[Up]</strong></a></td>
-  <td></td>
-  <td></td>
-</tr>
-"#,
-                    link=encode_link_path(&link)
-                ));
-            } else {
-                rows.push(r#"<tr><td>&nbsp;</td></tr>"#.to_owned());
-            }
-
-            // Directory entries
-            for Entry{ filename, metadata } in entries {
-                if self.index {
-                    for fname in vec!["index.html", "index.htm"] {
-                        if filename == fname {
-                            // Automatic render index page
-                            fs_path.push(filename);
-                            return self.send_file(req, &fs_path);
-                        }
-                    }
-                }
-                // * Entry.modified
-                let file_modified = system_time_to_date_time(metadata.modified().unwrap())
-                    .format("%Y-%m-%d %H:%M:%S").to_string();
-                // * Entry.filesize
-                let file_size = if metadata.is_dir() {
-                    "-".to_owned()
-                } else {
-                    convert(metadata.len() as f64)
-                };
-                // * Entry.linkstyle
-                let link_style = if metadata.is_dir() {
-                    "style=\"font-weight: bold;\"".to_owned()
-                } else {
-                    "".to_owned()
-                };
-                // * Entry.link
-                let mut link = path_prefix.clone();
-                link.push(filename.clone());
-                if metadata.is_dir() {
-                    link.push("".to_owned());
-                }
-                // * Entry.label
-                let file_name_label = if metadata.is_dir() {
-                    format!("{}/", &filename)
-                } else { filename.clone() };
-
-                // Render one directory entry
-                rows.push(format!(
-                    r#"
-<tr>
-  <td><a {linkstyle} href="/{link}">{label}</a></td>
-  <td style="color:#888;">[{modified}]</td>
-  <td><bold>{filesize}</bold></td>
-</tr>
-"#,
-                    linkstyle=link_style,
-                    link=encode_link_path(&link),
-                    label=file_name_label,
-                    modified=file_modified,
-                    filesize=file_size
-                ));
-            }
-
-            // Optinal upload form
-            let upload_form = if self.upload {
-                format!(
-                    r#"
-<form style="margin-top:1em; margin-bottom:1em;" action="/{path}" method="POST" enctype="multipart/form-data">
-  <input type="file" name="files" accept="*" multiple />
-  <input type="submit" value="Upload" />
-</form>
-"#,
-                    path=encode_link_path(&path_prefix))
-            } else { "".to_owned() };
-
-            // Put all parts together
-            resp.set_mut(format!(
-                r#"<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style> a {{ text-decoration:none; }} </style>
-</head>
-<body>
-  {upload_form}
-  <div>{breadcrumb}</div>
-  <hr />
-  <table>
-    {sort_links}
-    {rows}
-  </table>
-</body>
-</html>
-"#,
-                upload_form=upload_form,
-                breadcrumb=breadcrumb,
-                sort_links=sort_links,
-                rows=rows.join("\n")));
-
-            resp.headers.set(headers::ContentType::html());
-            Ok(resp)
+            self.list_directory(req, &fs_path, path_prefix)
         } else {
             self.send_file(req, &fs_path)
         }
