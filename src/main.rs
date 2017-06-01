@@ -1,5 +1,7 @@
 #[macro_use]
 extern crate clap;
+#[macro_use]
+extern crate lazy_static;
 extern crate pretty_bytes;
 extern crate time;
 extern crate chrono;
@@ -9,14 +11,16 @@ extern crate url;
 extern crate iron;
 extern crate multipart;
 extern crate hyper_native_tls;
+extern crate conduit_mime_types as mime_types;
 
 mod color;
 
 use std::env;
 use std::fmt;
+use std::fs;
+use std::ops::Deref;
 use std::str::FromStr;
 use std::net::IpAddr;
-use std::fs;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{PathBuf, Path};
 use std::error::Error;
@@ -36,7 +40,14 @@ use url::percent_encoding::{percent_decode, utf8_percent_encode, PATH_SEGMENT_EN
 
 use color::{Printer, build_spec};
 
-const ROOT_LINK: &'static str = "<a href=\"/\"><strong>[Root]</strong></a>";
+const ROOT_LINK: &'static str = r#"<a href="/"><strong>[Root]</strong></a>"#;
+
+lazy_static! {
+    static ref MIME_TYPES: mime_types::Types = mime_types::Types::new().unwrap();
+    static ref C_BOLD_GREEN: Option<ColorSpec> = Some(build_spec(Some(Color::Green), true));
+    static ref C_BOLD_YELLOW: Option<ColorSpec> = Some(build_spec(Some(Color::Yellow), true));
+    static ref C_BOLD_RED: Option<ColorSpec> = Some(build_spec(Some(Color::Red), true));
+}
 
 fn main() {
     let matches = clap::App::new("Simple HTTP Server")
@@ -407,6 +418,9 @@ impl MainHandler {
                                 try!(file.seek(SeekFrom::Start(offset))
                                      .map_err(|e| IronError::new(e, status::InternalServerError)));
                                 let take = file.take(length);
+                                // Set mime type
+                                let mime_str = MIME_TYPES.mime_for_path(path);
+                                let _ = mime_str.parse().map(|mime: Mime| resp.set_mut(mime));
 
                                 resp.headers.set(ContentLength(length));
                                 resp.headers.set(ContentRange(ContentRangeSpec::Bytes{
@@ -668,11 +682,11 @@ impl AfterMiddleware for RequestLogger {
     fn after(&self, req: &mut Request, resp: Response) -> IronResult<Response> {
         let status = resp.status.unwrap();
         let status_color = if status.is_success() {
-            Some(build_spec(Some(Color::Green), true))
+            C_BOLD_GREEN.deref()
         } else if status.is_informational() || status.is_redirection() {
-            Some(build_spec(Some(Color::Yellow), true))
+            C_BOLD_YELLOW.deref()
         } else {
-            Some(build_spec(Some(Color::Red), true))
+            C_BOLD_RED.deref()
         };
         self.printer.println_out(
             // datetime, remote-ip, status-code, method, url-path
@@ -680,7 +694,7 @@ impl AfterMiddleware for RequestLogger {
             &vec![
                 (now_string().as_str(), &None),
                 (req.remote_addr.ip().to_string().as_str(), &None),
-                (status.to_u16().to_string().as_str(), &status_color),
+                (status.to_u16().to_string().as_str(), status_color),
                 (req.method.to_string().as_str(), &None),
                 (percent_decode(req.url.as_ref().path().as_bytes())
                  .decode_utf8().unwrap().to_string().as_str(), &None)
