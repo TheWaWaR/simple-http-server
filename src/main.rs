@@ -56,7 +56,7 @@ lazy_static! {
 }
 
 fn main() {
-    let matches = clap::App::new("Simple HTTP Server")
+    let matches = clap::App::new("Simple HTTP(s) Server")
         .version(crate_version!())
         .arg(clap::Arg::with_name("root")
              .index(1)
