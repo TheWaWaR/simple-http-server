@@ -17,6 +17,7 @@ use std::fmt;
 use std::str::FromStr;
 use std::net::IpAddr;
 use std::fs;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{PathBuf, Path};
 use std::error::Error;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -64,6 +65,9 @@ fn main() {
         .arg(clap::Arg::with_name("nocache")
              .long("nocache")
              .help("Disable http cache"))
+        .arg(clap::Arg::with_name("norange")
+             .long("norange")
+             .help("Disable header::Range support (partial download)"))
         .arg(clap::Arg::with_name("cert")
              .long("cert")
              .takes_value(true)
@@ -145,6 +149,7 @@ fn main() {
     let index = matches.is_present("index");
     let upload = matches.is_present("upload");
     let cache = !matches.is_present("nocache");
+    let range = !matches.is_present("norange");
     let cert = matches.value_of("cert");
     let certpass = matches.value_of("certpass");
     let ip = matches.value_of("ip").unwrap();
@@ -164,7 +169,7 @@ fn main() {
     let color_magenta = Some(build_spec(Some(Color::Magenta), false));
     let addr = format!("{}:{}", ip, port);
     printer.println_out(
-        r#"  Index: {}, Upload: {}, Cache: {}, Threads: {}, Auth: {}
+        r#"  Index: {}, Upload: {}, Cache: {}, Range: {}, Threads: {}, Auth: {}
   https: {}, Cert: {}, Cert-Password: {}
    Root: {}
 Address: {}
@@ -173,6 +178,7 @@ Address: {}
             index.to_string(),
             upload.to_string(),
             cache.to_string(),
+            range.to_string(),
             threads.to_string(),
             auth.unwrap_or("disabled").to_string(),
             (if cert.is_some() { "enabled" } else { "disabled" }).to_string(),
@@ -186,7 +192,7 @@ Address: {}
             .collect::<Vec<(&str, &Option<ColorSpec>)>>()
     ).unwrap();
 
-    let mut chain = Chain::new(MainHandler{root, index, upload, cache});
+    let mut chain = Chain::new(MainHandler{root, index, upload, cache, range});
     if let Some(auth) = auth {
         chain.link_before(AuthChecker::new(auth));
     }
@@ -214,24 +220,25 @@ struct MainHandler {
     root: PathBuf,
     index: bool,
     upload: bool,
-    cache: bool
+    cache: bool,
+    range: bool
 }
 
 struct AuthChecker { username: String, password: String }
 struct RequestLogger { printer: Printer }
 
 #[derive(Debug)]
-struct AuthError;
+struct StringError(pub String);
 
-impl fmt::Display for AuthError {
+impl fmt::Display for StringError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Display::fmt("authentication error", f)
+        fmt::Display::fmt(&self.0, f)
     }
 }
 
-impl Error for AuthError {
+impl Error for StringError {
     fn description(&self) -> &str {
-        "authentication error"
+        &self.0
     }
 }
 
@@ -298,43 +305,153 @@ impl MainHandler {
 
     fn send_file<P: AsRef<Path>>(&self, req: &Request, path: P) -> IronResult<Response> {
         use iron::headers::{IfModifiedSince, CacheControl, LastModified, CacheDirective, HttpDate};
-        use iron::headers::{ContentLength, ContentType, ETag, EntityTag};
+        use iron::headers::{ContentLength, ContentType, ETag, EntityTag,
+                            AcceptRanges, RangeUnit, Range, ByteRangeSpec, IfRange, IfMatch,
+                            ContentRange, ContentRangeSpec};
         use iron::method::Method;
         use iron::mime::{Mime, TopLevel, SubLevel};
-        use iron::modifiers::Header;
         use filetime::FileTime;
 
         let path = path.as_ref();
         let metadata = fs::metadata(path);
         let metadata = try!(metadata.map_err(|e| IronError::new(e, status::InternalServerError)));
-        let mut response = if req.method == Method::Head {
-            let has_ct = req.headers.get::<ContentType>();
-            let cont_type = match has_ct {
-                None => ContentType(Mime(TopLevel::Text, SubLevel::Plain, vec![])),
-                Some(t) => t.clone()
-            };
-            Response::with((status::Ok, Header(cont_type), Header(ContentLength(metadata.len()))))
-        } else {
-            Response::with((status::Ok, path))
-        };
+
+        let time = FileTime::from_last_modification_time(&metadata);
+        let modified = time::Timespec::new(time.seconds() as i64, 0);
+        let etag = EntityTag::weak(
+            format!("{0:x}-{1:x}.{2:x}", metadata.len(), modified.sec, modified.nsec)
+        );
+
+        let mut resp = Response::with(status::Ok);
+        if self.range {
+            resp.headers.set(AcceptRanges(vec![RangeUnit::Bytes]));
+        }
+        match req.method {
+            Method::Head => {
+                let content_type = req.headers.get::<ContentType>()
+                    .map(|t| t.clone())
+                    .unwrap_or(ContentType(Mime(TopLevel::Text, SubLevel::Plain, vec![])));
+                resp.headers.set(content_type);
+                resp.headers.set(ContentLength(metadata.len()));
+            },
+            Method::Get => {
+                if self.range {
+                    let mut range = req.headers.get::<Range>();
+
+                    if range.is_some() {
+                        // [Reference]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/If-Match
+                        // Check header::If-Match
+                        if let Some(&IfMatch::Items(ref items)) = req.headers.get::<IfMatch>() {
+                            let mut matched = false;
+                            for item in items {
+                                if item.strong_eq(&etag) {
+                                    matched = true;
+                                    break;
+                                }
+                            }
+                            if !matched {
+                                return Err(IronError::new(
+                                    StringError("Etag not matched".to_owned()),
+                                    status::RangeNotSatisfiable
+                                ));
+                            }
+                        };
+                    }
+
+                    // [Reference]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/If-Range
+                    let matched_ifrange = match req.headers.get::<IfRange>() {
+                        Some(&IfRange::EntityTag(ref etag_ifrange)) => etag.weak_eq(etag_ifrange),
+                        Some(&IfRange::Date(HttpDate(ref date_ifrange))) => &time::at(modified) <= date_ifrange,
+                        None => true
+                    };
+                    if !matched_ifrange {
+                        range = None;
+                    }
+
+                    match range {
+                        Some(&Range::Bytes(ref ranges)) => {
+                            if let Some(range) = ranges.get(0) {
+                                let (offset, length) = match range {
+                                    &ByteRangeSpec::FromTo(x, mut y) => { // "x-y"
+                                        if x >= metadata.len() || x > y {
+                                            return Err(IronError::new(
+                                                StringError(format!("Invalid range(x={}, y={})", x, y)),
+                                                status::RangeNotSatisfiable
+                                            ));
+                                        }
+                                        if y >= metadata.len() {
+                                            y = metadata.len() - 1;
+                                        }
+                                        (x, y - x + 1)
+                                    }
+                                    &ByteRangeSpec::AllFrom(x) => { // "x-"
+                                        if x >= metadata.len() {
+                                            return Err(IronError::new(
+                                                StringError(format!(
+                                                    "Range::AllFrom to large (x={}), Content-Length: {})",
+                                                    x, metadata.len())),
+                                                status::RangeNotSatisfiable
+                                            ));
+                                        }
+                                        (x, metadata.len() - x)
+                                    }
+                                    &ByteRangeSpec::Last(mut x) => { // "-x"
+                                        if x > metadata.len() {
+                                            x = metadata.len();
+                                        }
+                                        (metadata.len() - x, x)
+                                    }
+                                };
+                                let mut file = try!(fs::File::open(path)
+                                                    .map_err(|e| IronError::new(e, status::InternalServerError)));
+                                try!(file.seek(SeekFrom::Start(offset))
+                                     .map_err(|e| IronError::new(e, status::InternalServerError)));
+                                let take = file.take(length);
+
+                                resp.headers.set(ContentLength(length));
+                                resp.headers.set(ContentRange(ContentRangeSpec::Bytes{
+                                    range: Some((offset, offset + length - 1)),
+                                    instance_length: Some(metadata.len())
+                                }));
+                                resp.body = Some(Box::new(Box::new(take) as Box<Read + Send>));
+                                resp.set_mut(status::PartialContent);
+                            } else {
+                                return Err(IronError::new(
+                                    StringError("Empty range set".to_owned()),
+                                    status::RangeNotSatisfiable
+                                ));
+                            }
+                        }
+                        Some(_) => {
+                            return Err(IronError::new(
+                                StringError("Invalid range type".to_owned()),
+                                status::RangeNotSatisfiable
+                            ));
+                        }
+                        _ => {
+                            resp.set_mut(path);
+                        }
+                    }
+                } else {
+                    resp.set_mut(path);
+                }
+            }
+            _ => { /* Should redirect to the same URL */ }
+        }
 
         if self.cache {
             static SECONDS: u32 = 7 * 24 * 3600; // max-age: 7.days()
-            let time = FileTime::from_last_modification_time(&metadata);
-            let modified = time::Timespec::new(time.seconds() as i64, 0);
-
-            if let Some(IfModifiedSince(HttpDate(if_modified_since))) = req.headers.get::<IfModifiedSince>().cloned() {
+            if let Some(&IfModifiedSince(HttpDate(ref if_modified_since))) = req.headers.get::<IfModifiedSince>() {
                 if modified <= if_modified_since.to_timespec() {
                     return Ok(Response::with(status::NotModified))
                 }
             };
-
             let cache = vec![CacheDirective::Public, CacheDirective::MaxAge(SECONDS)];
-            response.headers.set(CacheControl(cache));
-            response.headers.set(LastModified(HttpDate(time::at(modified))));
-            response.headers.set(ETag(EntityTag::weak(format!("{0:x}-{1:x}.{2:x}", metadata.len(), modified.sec, modified.nsec))));
+            resp.headers.set(CacheControl(cache));
+            resp.headers.set(LastModified(HttpDate(time::at(modified))));
+            resp.headers.set(ETag(etag));
         }
-        Ok(response)
+        Ok(resp)
     }
 }
 
@@ -524,14 +641,14 @@ impl BeforeMiddleware for AuthChecker {
                     Ok(())
                 } else {
                     Err(IronError {
-                        error: Box::new(AuthError),
+                        error: Box::new(StringError("authorization error".to_owned())),
                         response: Response::with((status::Unauthorized, "Wrong username or password."))
                     })
                 }
             }
             Some(&headers::Authorization(headers::Basic { username: _, password: None })) => {
                 Err(IronError {
-                    error: Box::new(AuthError),
+                    error: Box::new(StringError("authorization error".to_owned())),
                     response: Response::with((status::Unauthorized, "No password found."))
                 })
             }
@@ -539,7 +656,7 @@ impl BeforeMiddleware for AuthChecker {
                 let mut resp = Response::with(status::Unauthorized);
                 resp.headers.set_raw("WWW-Authenticate", vec![b"Basic realm=\"main\"".to_vec()]);
                 Err(IronError {
-                    error: Box::new(AuthError),
+                    error: Box::new(StringError("authorization error".to_owned())),
                     response: resp
                 })
             }
