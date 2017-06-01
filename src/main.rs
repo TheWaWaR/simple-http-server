@@ -52,6 +52,7 @@ lazy_static! {
     static ref C_BOLD_GREEN: Option<ColorSpec> = Some(build_spec(Some(Color::Green), true));
     static ref C_BOLD_YELLOW: Option<ColorSpec> = Some(build_spec(Some(Color::Yellow), true));
     static ref C_BOLD_RED: Option<ColorSpec> = Some(build_spec(Some(Color::Red), true));
+    static ref SORT_FIELDS: Vec<&'static str> = vec!["name", "modified", "size"];
 }
 
 fn main() {
@@ -382,16 +383,28 @@ impl MainHandler {
                     order = Some(v.to_string());
                 }
             }
+            let order = order.unwrap_or(DEFAULT_ORDER.to_owned());
             let mut order_labels = BTreeMap::new();
-            for field in vec!["name", "modified", "size"] {
-                if sort_field == Some(field.to_owned()) && order == Some(ORDER_DESC.to_owned()) {
+            for field in SORT_FIELDS.iter() {
+                if sort_field == Some((*field).to_owned()) && order == ORDER_DESC {
                     // reverse the order of the field
-                    order_labels.insert(field, ORDER_ASC);
+                    order_labels.insert(field.to_owned(), ORDER_ASC);
                 }
             }
 
             if let Some(field) = sort_field {
-                let reverse = order == Some(ORDER_DESC.to_owned());
+                if SORT_FIELDS.iter().position(|s| *s == field.as_str()).is_none() {
+                    return Err(IronError::new(
+                        StringError(format!("Unknown sort field: {}", field)),
+                        status::BadRequest));
+                }
+                if vec![ORDER_ASC, ORDER_DESC].iter().position(|s| *s == order).is_none() {
+                    return Err(IronError::new(
+                        StringError(format!("Unknown sort order: {}", order)),
+                        status::BadRequest));
+                }
+
+                let reverse = order == ORDER_DESC;
                 entries.sort_by(|a, b| {
                     let rv = match field.as_str() {
                         "name" => {
@@ -411,9 +424,7 @@ impl MainHandler {
                                 Ordering::Greater
                             }
                         }
-                        f @ _ => {
-                            panic!("Invalid sort field: {}", f);
-                        }
+                        _ => { unreachable!() }
                     };
                     if reverse { rv.reverse() } else { rv }
                 });
