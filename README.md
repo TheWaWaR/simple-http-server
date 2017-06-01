@@ -1,7 +1,7 @@
 # How it looks like?
 
 ### Screenshot
-<img src="./screenshot.png" width="50%" height="50%">
+<img src="./screenshot.png" width="80%" height="80%">
 
 ### Command Line Arguments
 ```
