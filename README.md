@@ -63,3 +63,4 @@ simple-http-server -h
 - [x] (default disabled) HTTP Basic Authentication (by username:password)
 - [x] Sort by: filename, filesize, modifled
 - [x] HTTPS support
+- [ ] Content-Encoding: gzip
