@@ -259,7 +259,7 @@ fn encode_link_path(path: &Vec<String>) -> String {
     }).collect::<Vec<String>>().join("/")
 }
 
-fn error_resp(s: status::Status, msg: &str)  -> IronResult<Response> {
+fn error_resp(s: status::Status, msg: &str) -> Response {
     let mut resp = Response::with((s, format!(
         r#"<!DOCTYPE html>
 <html>
@@ -278,7 +278,7 @@ fn error_resp(s: status::Status, msg: &str)  -> IronResult<Response> {
         msg=msg
     )));
     resp.headers.set(headers::ContentType::html());
-    Ok(resp)
+    resp
 }
 
 impl MainHandler {
@@ -487,7 +487,7 @@ impl Handler for MainHandler {
 
         if self.upload && req.method == method::Post {
             if let Err((s, msg)) = self.save_files(req, &fs_path) {
-                return error_resp(s, &msg);
+                return Ok(error_resp(s, &msg));
             } else {
                 return Ok(Response::with((status::Found, Redirect(req.url.clone()))))
             }
@@ -632,7 +632,8 @@ impl Handler for MainHandler {
                     self.send_file(req, &fs_path)
                 }
             },
-            Err(e) => error_resp(status::NotFound, e.description().to_string().as_str())
+            Err(e) => Ok(error_resp(status::NotFound,
+                                    e.description().to_string().as_str()))
         }
     }
 }
@@ -649,8 +650,10 @@ impl AuthChecker {
 
 impl BeforeMiddleware for AuthChecker {
     fn before(&self, req: &mut Request) -> IronResult<()> {
-        match req.headers.get::<headers::Authorization<headers::Basic>>() {
-            Some(&headers::Authorization(headers::Basic { ref username, password: Some(ref password) })) => {
+        use iron::headers::{Authorization, Basic};
+
+        match req.headers.get::<Authorization<Basic>>() {
+            Some(&Authorization(Basic { ref username, password: Some(ref password) })) => {
                 if username == self.username.as_str() && password == self.password.as_str() {
                     Ok(())
                 } else {
@@ -660,7 +663,7 @@ impl BeforeMiddleware for AuthChecker {
                     })
                 }
             }
-            Some(&headers::Authorization(headers::Basic { username: _, password: None })) => {
+            Some(&Authorization(Basic { username: _, password: None })) => {
                 Err(IronError {
                     error: Box::new(StringError("authorization error".to_owned())),
                     response: Response::with((status::Unauthorized, "No password found."))
@@ -678,8 +681,8 @@ impl BeforeMiddleware for AuthChecker {
     }
 }
 
-impl AfterMiddleware for RequestLogger {
-    fn after(&self, req: &mut Request, resp: Response) -> IronResult<Response> {
+impl RequestLogger {
+    fn log(&self, req: & Request, resp: &Response) {
         let status = resp.status.unwrap();
         let status_color = if status.is_success() {
             C_BOLD_GREEN.deref()
@@ -699,7 +702,29 @@ impl AfterMiddleware for RequestLogger {
                 (percent_decode(req.url.as_ref().path().as_bytes())
                  .decode_utf8().unwrap().to_string().as_str(), &None)
             ]).unwrap();
+    }
+}
+
+impl AfterMiddleware for RequestLogger {
+    fn after(&self, req: &mut Request, resp: Response) -> IronResult<Response> {
+        self.log(req, &resp);
         Ok(resp)
+    }
+
+    fn catch(&self, req: &mut Request, err: IronError) -> IronResult<Response> {
+        self.log(req, &err.response);
+        let mut unauthorized = false;
+        if let Some(ref s) = err.response.status {
+            if s == &status::Unauthorized {
+                unauthorized = true;
+            }
+        }
+        if unauthorized {
+            Err(err)
+        } else {
+            Ok(error_resp(err.response.status.unwrap_or(status::InternalServerError),
+                       err.error.description()))
+        }
     }
 }
 
