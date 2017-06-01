@@ -416,7 +416,8 @@ impl MainHandler {
                             a.cmp(&b)
                         }
                         "size" => {
-                            if a.metadata.file_type() == b.metadata.file_type() {
+                            if a.metadata.is_dir() == b.metadata.is_dir()
+                                || a.metadata.is_file() == b.metadata.is_file() {
                                 a.metadata.len().cmp(&b.metadata.len())
                             } else if a.metadata.is_dir() {
                                 Ordering::Less
