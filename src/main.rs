@@ -18,6 +18,7 @@ mod color;
 use std::env;
 use std::fmt;
 use std::fs;
+use std::cmp::Ordering;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::net::IpAddr;
@@ -25,6 +26,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::{PathBuf, Path};
 use std::error::Error;
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::collections::BTreeMap;
 
 use iron::headers;
 use iron::status;
@@ -41,6 +43,9 @@ use url::percent_encoding::{percent_decode, utf8_percent_encode, PATH_SEGMENT_EN
 use color::{Printer, build_spec};
 
 const ROOT_LINK: &'static str = r#"<a href="/"><strong>[Root]</strong></a>"#;
+const ORDER_ASC: &'static str = "asc";
+const ORDER_DESC: &'static str = "desc";
+const DEFAULT_ORDER: &'static str = ORDER_DESC;
 
 lazy_static! {
     static ref MIME_TYPES: mime_types::Types = mime_types::Types::new().unwrap();
@@ -73,6 +78,9 @@ fn main() {
              .short("u")
              .long("upload")
              .help("Enable upload files (multiple select)"))
+        .arg(clap::Arg::with_name("nosort")
+             .long("nosort")
+             .help("Disable directory entries sort (by: name, modified, size)"))
         .arg(clap::Arg::with_name("nocache")
              .long("nocache")
              .help("Disable http cache"))
@@ -159,6 +167,7 @@ fn main() {
         .unwrap_or(env::current_dir().unwrap());
     let index = matches.is_present("index");
     let upload = matches.is_present("upload");
+    let sort = !matches.is_present("nosort");
     let cache = !matches.is_present("nocache");
     let range = !matches.is_present("norange");
     let cert = matches.value_of("cert");
@@ -180,7 +189,8 @@ fn main() {
     let color_magenta = Some(build_spec(Some(Color::Magenta), false));
     let addr = format!("{}:{}", ip, port);
     printer.println_out(
-        r#"  Index: {}, Upload: {}, Cache: {}, Range: {}, Threads: {}, Auth: {}
+        r#"  Index: {}, Upload: {}, Cache: {}, Range: {}, Sort: {}, Threads: {}
+   Auth: {}
   https: {}, Cert: {}, Cert-Password: {}
    Root: {}
 Address: {}
@@ -190,6 +200,7 @@ Address: {}
             upload.to_string(),
             cache.to_string(),
             range.to_string(),
+            sort.to_string(),
             threads.to_string(),
             auth.unwrap_or("disabled").to_string(),
             (if cert.is_some() { "enabled" } else { "disabled" }).to_string(),
@@ -203,7 +214,7 @@ Address: {}
             .collect::<Vec<(&str, &Option<ColorSpec>)>>()
     ).unwrap();
 
-    let mut chain = Chain::new(MainHandler{root, index, upload, cache, range});
+    let mut chain = Chain::new(MainHandler{root, index, upload, cache, range, sort});
     if let Some(auth) = auth {
         chain.link_before(AuthChecker::new(auth));
     }
@@ -232,7 +243,8 @@ struct MainHandler {
     index: bool,
     upload: bool,
     cache: bool,
-    range: bool
+    range: bool,
+    sort: bool
 }
 
 struct AuthChecker { username: String, password: String }
@@ -498,6 +510,10 @@ impl Handler for MainHandler {
                 let mut resp = Response::with(status::Ok);
                 if metadata.is_dir() {
                     let mut rows = Vec::new();
+                    let mut entries = fs::read_dir(&fs_path)
+                        .unwrap()
+                        .map(|r| r.unwrap())
+                        .collect::<Vec<fs::DirEntry>>();
 
                     // Breadcrumb navigation
                     let breadcrumb = if path_prefix.len() > 0 {
@@ -514,6 +530,75 @@ impl Handler for MainHandler {
                         bread_links.reverse();
                         bread_links.join(" / ")
                     } else { ROOT_LINK.to_owned() };
+
+                    // Sort links
+                    let sort_links = if self.sort {
+                        let mut sort_field = None;
+                        let mut order = None;
+                        for (k, v) in req.url.as_ref().query_pairs() {
+                            if k == "sort" {
+                                sort_field = Some(v.to_string());
+                            } else if k == "order" {
+                                order = Some(v.to_string());
+                            }
+                        }
+                        let mut order_labels = BTreeMap::new();
+                        for field in vec!["name", "modified", "size"] {
+                            if sort_field == Some(field.to_owned()) && order == Some(ORDER_DESC.to_owned()) {
+                                // reverse the order of the field
+                                order_labels.insert(field, ORDER_ASC);
+                            }
+                        }
+
+                        if let Some(field) = sort_field {
+                            let reverse = order == Some(ORDER_DESC.to_owned());
+                            entries.sort_by(|a, b| {
+                                let rv = match field.as_str() {
+                                    "name" => {
+                                        let a = a.file_name().into_string().unwrap();
+                                        let b = b.file_name().into_string().unwrap();
+                                        a.cmp(&b)
+                                    }
+                                    "modified" => {
+                                        let a = a.metadata().unwrap().modified().unwrap();
+                                        let b = b.metadata().unwrap().modified().unwrap();
+                                        a.cmp(&b)
+                                    }
+                                    "size" => {
+                                        let am = a.metadata().unwrap();
+                                        let bm = b.metadata().unwrap();
+                                        if am.file_type() == bm.file_type() {
+                                            am.len().cmp(&bm.len())
+                                        } else if am.is_dir() {
+                                            Ordering::Less
+                                        } else {
+                                            Ordering::Greater
+                                        }
+                                    }
+                                    f @ _ => {
+                                        panic!("Invalid sort field: {}", f);
+                                    }
+                                };
+                                if reverse { rv.reverse() } else { rv }
+                            });
+                        }
+
+                        let mut current_link = path_prefix.clone();
+                        current_link.push("".to_owned());
+                        format!(r#"
+<tr>
+  <th><a href="/{link}?sort=name&order={name_order}">Name</a></th>
+  <th><a href="/{link}?sort=modified&order={modified_order}">Last modified</a></th>
+  <th><a href="/{link}?sort=size&order={size_order}">Size</a></th>
+</tr>
+<tr><td style="border-top:1px dashed #BBB;" colspan="5"></td></tr>
+"#,
+                                link=encode_link_path(&current_link),
+                                name_order=order_labels.get("name").unwrap_or(&DEFAULT_ORDER),
+                                modified_order=order_labels.get("modified").unwrap_or(&DEFAULT_ORDER),
+                                size_order=order_labels.get("size").unwrap_or(&DEFAULT_ORDER)
+                        )
+                    }  else { "".to_owned() };
 
                     // Goto parent directory link
                     if path_prefix.len() > 0 {
@@ -537,8 +622,7 @@ impl Handler for MainHandler {
                     }
 
                     // Directory entries
-                    for entry in fs::read_dir(&fs_path).unwrap() {
-                        let entry = entry.unwrap();
+                    for entry in entries {
                         let entry_meta = entry.metadata().unwrap();
                         let file_name = entry.file_name().into_string().unwrap();
 
@@ -618,12 +702,16 @@ impl Handler for MainHandler {
   {upload_form}
   <div>{breadcrumb}</div>
   <hr />
-  <table>{rows}</table>
+  <table>
+    {sort_links}
+    {rows}
+  </table>
 </body>
 </html>
 "#,
                         upload_form=upload_form,
                         breadcrumb=breadcrumb,
+                        sort_links=sort_links,
                         rows=rows.join("\n")));
 
                     resp.headers.set(headers::ContentType::html());
