@@ -187,7 +187,7 @@ fn main() {
         .unwrap();
 
     let printer = Printer::new();
-    let color_magenta = Some(build_spec(Some(Color::Magenta), false));
+    let color_blue = Some(build_spec(Some(Color::Blue), false));
     let addr = format!("{}:{}", ip, port);
     printer.println_out(
         r#"  Index: {}, Upload: {}, Cache: {}, Range: {}, Sort: {}, Threads: {}
@@ -211,7 +211,7 @@ Address: {}
             format!("{}://{}", if cert.is_some() {"https"} else {"http"}, addr),
             now_string()
         ].iter()
-            .map(|s| (s.as_str(), &color_magenta))
+            .map(|s| (s.as_str(), &color_blue))
             .collect::<Vec<(&str, &Option<ColorSpec>)>>()
     ).unwrap();
 
