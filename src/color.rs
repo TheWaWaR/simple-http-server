@@ -74,12 +74,14 @@ impl Printer {
                     match c {
                         Some('}') => {
                             if let Some(&(ref s, ref colorspec)) = arg_iter.next() {
-                                if let &&Some(ref colorspec) = colorspec {
-                                    buffer.set_color(colorspec).unwrap();
-                                }
-                                buffer.write(s.as_bytes()).unwrap();
-                                if colorspec.is_some() {
-                                    buffer.reset().unwrap();
+                                if !s.is_empty() {
+                                    if let &&Some(ref colorspec) = colorspec {
+                                        buffer.set_color(colorspec).unwrap();
+                                    }
+                                    buffer.write(s.as_bytes()).unwrap();
+                                    if colorspec.is_some() {
+                                        buffer.reset().unwrap();
+                                    }
                                 }
                                 count += 1;
                             } else {

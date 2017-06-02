@@ -5,6 +5,7 @@ extern crate lazy_static;
 extern crate pretty_bytes;
 extern crate time;
 extern crate chrono;
+extern crate flate2;
 extern crate filetime;
 extern crate termcolor;
 extern crate url;
@@ -13,34 +14,40 @@ extern crate multipart;
 extern crate hyper_native_tls;
 extern crate conduit_mime_types as mime_types;
 
+mod util;
 mod color;
+mod compress;
 
 use std::env;
-use std::fmt;
 use std::fs;
 use std::cmp::Ordering;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::net::IpAddr;
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{PathBuf, Path};
 use std::error::Error;
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::collections::BTreeMap;
 
 use iron::headers;
 use iron::status;
 use iron::method;
+use iron::headers::{ContentEncoding, Encoding, AcceptEncoding, QualityItem};
 use iron::modifiers::Redirect;
 use iron::{Iron, Request, Response, IronResult, IronError, Set, Chain, Handler,
            BeforeMiddleware, AfterMiddleware};
 use multipart::server::{Multipart, SaveResult};
 use pretty_bytes::converter::convert;
-use chrono::{DateTime, Local, TimeZone};
 use termcolor::{Color, ColorSpec};
-use url::percent_encoding::{percent_decode, utf8_percent_encode, PATH_SEGMENT_ENCODE_SET};
+use url::percent_encoding::{percent_decode};
 
+use util::{
+    StringError,
+    enable_string, now_string,
+    system_time_to_date_time, encode_link_path, error_io2iron
+};
 use color::{Printer, build_spec};
+use compress::{CompressionHandler};
 
 const ROOT_LINK: &'static str = r#"<a href="/"><strong>[Root]</strong></a>"#;
 const ORDER_ASC: &'static str = "asc";
@@ -144,6 +151,13 @@ fn main() {
                  }
              })
              .help("HTTP Basic Auth (username:password)"))
+        .arg(clap::Arg::with_name("compress")
+             .short("c")
+             .long("compress")
+             .multiple(true)
+             .value_delimiter(",")
+             .takes_value(true)
+             .help("Enable file compression: gzip/deflate (Note: conflict with range!)"))
         .arg(clap::Arg::with_name("threads")
              .short("t")
              .long("threads")
@@ -180,6 +194,7 @@ fn main() {
         .parse::<u16>()
         .unwrap();
     let auth = matches.value_of("auth");
+    let compress = matches.values_of_lossy("compress");
     let threads = matches
         .value_of("threads")
         .unwrap()
@@ -187,25 +202,45 @@ fn main() {
         .unwrap();
 
     let printer = Printer::new();
+    if range && compress.is_some() {
+        printer.println_err(
+            "{}: Range and Compression can not both enabled! You may use `{}` to disable Range.", &vec![
+                ("ERROR", &Some(build_spec(Some(Color::Red), true))),
+                ("--norange", &Some(build_spec(Some(Color::Green), false)))
+        ]).unwrap();
+        std::process::exit(1);
+    }
+
     let color_blue = Some(build_spec(Some(Color::Blue), false));
     let addr = format!("{}:{}", ip, port);
+    let compression_exts = compress.clone()
+        .unwrap_or(Vec::new())
+        .iter()
+        .map(|s| format!("*.{}", s))
+        .collect::<Vec<String>>();
+    let compression_string = if compression_exts.is_empty() {
+        "disabled".to_owned()
+    } else {
+        format!("{:?}", compression_exts)
+    };
     printer.println_out(
         r#"  Index: {}, Upload: {}, Cache: {}, Range: {}, Sort: {}, Threads: {}
-   Auth: {}
+   Auth: {}, Compression: {}
   https: {}, Cert: {}, Cert-Password: {}
    Root: {}
 Address: {}
 ======== [{}] ========"#,
         &vec![
-            index.to_string(),
-            upload.to_string(),
-            cache.to_string(),
-            range.to_string(),
-            sort.to_string(),
+            enable_string(index),
+            enable_string(upload),
+            enable_string(cache),
+            enable_string(range),
+            enable_string(sort),
             threads.to_string(),
             auth.unwrap_or("disabled").to_string(),
+            compression_string,
             (if cert.is_some() { "enabled" } else { "disabled" }).to_string(),
-            cert.unwrap_or("None").to_owned(),
+            cert.unwrap_or("").to_owned(),
             certpass.unwrap_or("").to_owned(),
             root.to_str().unwrap().to_owned(),
             format!("{}://{}", if cert.is_some() {"https"} else {"http"}, addr),
@@ -215,9 +250,22 @@ Address: {}
             .collect::<Vec<(&str, &Option<ColorSpec>)>>()
     ).unwrap();
 
-    let mut chain = Chain::new(MainHandler{root, index, upload, cache, range, sort});
+    let mut chain = Chain::new(MainHandler{
+        root, index, upload, cache, range, sort,
+        compress: compress
+            .clone()
+            .map(|exts| exts
+                 .iter()
+                 .map(|s| format!(".{}", s))
+                 .collect())
+    });
     if let Some(auth) = auth {
         chain.link_before(AuthChecker::new(auth));
+    }
+    if let Some(ref exts) = compress {
+        if !exts.is_empty() {
+            chain.link_after(CompressionHandler);
+        }
     }
     chain.link_after(RequestLogger{ printer: Printer::new() });
     let mut server = Iron::new(chain);
@@ -245,41 +293,12 @@ struct MainHandler {
     upload: bool,
     cache: bool,
     range: bool,
-    sort: bool
+    sort: bool,
+    compress: Option<Vec<String>>
 }
 
 struct AuthChecker { username: String, password: String }
 struct RequestLogger { printer: Printer }
-
-#[derive(Debug)]
-struct StringError(pub String);
-
-impl fmt::Display for StringError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Display::fmt(&self.0, f)
-    }
-}
-
-impl Error for StringError {
-    fn description(&self) -> &str {
-        &self.0
-    }
-}
-
-fn encode_link_path(path: &Vec<String>) -> String {
-    path.iter().map(|s| {
-        utf8_percent_encode(s, PATH_SEGMENT_ENCODE_SET).to_string()
-    }).collect::<Vec<String>>().join("/")
-}
-
-fn error_io2iron(err: io::Error) -> IronError {
-    let status = match err.kind() {
-        io::ErrorKind::PermissionDenied => status::Forbidden,
-        io::ErrorKind::NotFound => status::NotFound,
-        _ => status::InternalServerError
-    };
-    IronError::new(err, status)
-}
 
 fn error_resp(s: status::Status, msg: &str) -> Response {
     let mut resp = Response::with((s, format!(
@@ -337,6 +356,7 @@ impl MainHandler {
     }
 
     fn list_directory(&self, req: &mut Request, fs_path: &PathBuf, path_prefix: Vec<String>) -> IronResult<Response> {
+
         struct Entry {
             filename: String,
             metadata: fs::Metadata
@@ -560,6 +580,15 @@ impl MainHandler {
             rows=rows.join("\n")));
 
         resp.headers.set(headers::ContentType::html());
+        if self.compress.is_some() {
+            if let Some(&AcceptEncoding(ref encodings)) = req.headers.get::<AcceptEncoding>() {
+                for &QualityItem{ ref item, ..} in encodings {
+                    if *item == Encoding::Deflate || *item == Encoding::Gzip {
+                        resp.headers.set(ContentEncoding(vec![Encoding::Gzip]));
+                    }
+                }
+            }
+        }
         Ok(resp)
     }
 
@@ -704,6 +733,20 @@ impl MainHandler {
             _ => { /* Should redirect to the same URL */ }
         }
 
+        if let Some(ref exts) = self.compress {
+            let path_str = path.to_string_lossy();
+            if exts.iter().position(|ext| path_str.ends_with(ext)).is_some() {
+                if let Some(&AcceptEncoding(ref encodings)) = req.headers.get::<AcceptEncoding>() {
+                    for &QualityItem{ ref item, ..} in encodings {
+                        if *item == Encoding::Deflate || *item == Encoding::Gzip {
+                            resp.headers.set(ContentEncoding(vec![item.clone()]));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         if self.cache {
             static SECONDS: u32 = 7 * 24 * 3600; // max-age: 7.days()
             if let Some(&IfModifiedSince(HttpDate(ref if_modified_since))) = req.headers.get::<IfModifiedSince>() {
@@ -844,24 +887,4 @@ impl AfterMiddleware for RequestLogger {
                        err.error.description()))
         }
     }
-}
-
-fn now_string() -> String {
-    Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
-}
-
-fn system_time_to_date_time(t: SystemTime) -> DateTime<Local> {
-    let (sec, nsec) = match t.duration_since(UNIX_EPOCH) {
-        Ok(dur) => (dur.as_secs() as i64, dur.subsec_nanos()),
-        Err(e) => { // unlikely but should be handled
-            let dur = e.duration();
-            let (sec, nsec) = (dur.as_secs() as i64, dur.subsec_nanos());
-            if nsec == 0 {
-                (-sec, 0)
-            } else {
-                (-sec - 1, 1_000_000_000 - nsec)
-            }
-        },
-    };
-    Local.timestamp(sec, nsec)
 }
