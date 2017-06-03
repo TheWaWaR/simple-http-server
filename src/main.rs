@@ -90,7 +90,7 @@ fn main() {
              .help("Disable http cache"))
         .arg(clap::Arg::with_name("norange")
              .long("norange")
-             .help("Disable header::Range support (partial download)"))
+             .help("Disable header::Range support (partial request)"))
         .arg(clap::Arg::with_name("cert")
              .long("cert")
              .takes_value(true)
@@ -153,7 +153,7 @@ fn main() {
              .multiple(true)
              .value_delimiter(",")
              .takes_value(true)
-             .help("Enable file compression: gzip/deflate (Note: conflict with range!)"))
+             .help("Enable file compression: gzip/deflate (Note: disabled on partial request!)"))
         .arg(clap::Arg::with_name("threads")
              .short("t")
              .long("threads")
@@ -198,15 +198,15 @@ fn main() {
         .unwrap();
 
     let printer = Printer::new();
-    if range && compress.is_some() {
-        printer.println_err(
-            "{}: Range and Compression can not both enabled! You may use `{}` to disable Range.", &vec![
-                ("ERROR", &Some(build_spec(Some(Color::Red), true))),
-                ("--norange", &Some(build_spec(Some(Color::Green), false)))
-        ]).unwrap();
-        std::process::exit(1);
-    }
-
+    // TODO: may remove it later
+    // if range && compress.is_some() {
+    //     printer.println_err(
+    //         "{}: Range and Compression can not both enabled! You may use `{}` to disable Range.", &vec![
+    //             ("ERROR", &Some(build_spec(Some(Color::Red), true))),
+    //             ("--norange", &Some(build_spec(Some(Color::Green), false)))
+    //     ]).unwrap();
+    //     std::process::exit(1);
+    // }
     let color_blue = Some(build_spec(Some(Color::Blue), false));
     let addr = format!("{}:{}", ip, port);
     let compression_exts = compress.clone()
@@ -732,7 +732,8 @@ impl MainHandler {
 
         if let Some(ref exts) = self.compress {
             let path_str = path.to_string_lossy();
-            if exts.iter().position(|ext| path_str.ends_with(ext)).is_some() {
+            if resp.status != Some(status::PartialContent) &&
+                exts.iter().position(|ext| path_str.ends_with(ext)).is_some() {
                 if let Some(&AcceptEncoding(ref encodings)) = req.headers.get::<AcceptEncoding>() {
                     for &QualityItem{ ref item, ..} in encodings {
                         if *item == Encoding::Deflate || *item == Encoding::Gzip {
