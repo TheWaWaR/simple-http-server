@@ -37,11 +37,12 @@ ARGS:
 # Installation
 
 ### Download binary 
+[Goto Download](https://github.com/TheWaWaR/simple-http-server/releases)
+
  - windows-64bit
  - osx-64bit
  - linux-64bit
 
-[Release Page](https://github.com/TheWaWaR/simple-http-server/releases)
 
 ### Install by cargo
 
