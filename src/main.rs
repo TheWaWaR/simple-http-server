@@ -727,7 +727,9 @@ impl MainHandler {
                     resp.body = Some(Box::new(file));
                 }
             }
-            _ => { /* Should redirect to the same URL */ }
+            _ => {
+                return Ok(Response::with(status::MethodNotAllowed));
+            }
         }
 
         if let Some(ref exts) = self.compress {
