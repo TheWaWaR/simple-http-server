@@ -588,7 +588,7 @@ impl MainHandler {
             if let Some(&AcceptEncoding(ref encodings)) = req.headers.get::<AcceptEncoding>() {
                 for &QualityItem{ ref item, ..} in encodings {
                     if *item == Encoding::Deflate || *item == Encoding::Gzip {
-                        resp.headers.set(ContentEncoding(vec![Encoding::Gzip]));
+                        resp.headers.set(ContentEncoding(vec![item.clone()]));
                     }
                 }
             }
