@@ -6,10 +6,9 @@ use iron::{Response, Request, IronResult, AfterMiddleware};
 use iron::response::WriteBody;
 use iron::headers::{ContentLength, ContentEncoding, TransferEncoding, Encoding};
 
+// [Reference]: https://github.com/iron/iron/issues/548
 struct GzipBody(Box<WriteBody>);
 struct DeflateBody(Box<WriteBody>);
-
-pub struct CompressionHandler;
 
 impl WriteBody for GzipBody {
     fn write_body(&mut self, w: &mut io::Write) -> io::Result<()> {
@@ -26,6 +25,8 @@ impl WriteBody for DeflateBody {
         w.finish().map(|_| ())
     }
 }
+
+pub struct CompressionHandler;
 
 impl AfterMiddleware for CompressionHandler {
 
@@ -56,12 +57,12 @@ impl AfterMiddleware for CompressionHandler {
         if resp.body.is_some() {
             match encoding {
                 Some(Encoding::Gzip) => {
-                    // TransferEncoding will be chunked
+                    // TransferEncoding will be `chunked`
                     resp.headers.remove::<ContentLength>();
                     resp.body = Some(Box::new(GzipBody(resp.body.take().unwrap())));
                 }
                 Some(Encoding::Deflate) => {
-                    // TransferEncoding will be chunked
+                    // TransferEncoding will be `chunked`
                     resp.headers.remove::<ContentLength>();
                     resp.body = Some(Box::new(DeflateBody(resp.body.take().unwrap())));
                 }

@@ -5,10 +5,12 @@ use std::error::Error;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use iron::status;
-use iron::{IronError};
-use iron::headers::{Range, ByteRangeSpec};
+use iron::headers;
+use iron::{IronError, Response};
 use url::percent_encoding::{utf8_percent_encode, PATH_SEGMENT_ENCODE_SET};
 use chrono::{DateTime, Local, TimeZone};
+
+pub const ROOT_LINK: &'static str = r#"<a href="/"><strong>[Root]</strong></a>"#;
 
 #[derive(Debug)]
 pub struct StringError(pub String);
@@ -43,6 +45,10 @@ pub fn error_io2iron(err: io::Error) -> IronError {
     };
     IronError::new(err, status)
 }
+
+/* TODO: may not used
+
+use iron::headers::{Range, ByteRangeSpec};
 
 #[allow(dead_code)]
 pub fn parse_range(ranges: &Vec<ByteRangeSpec>, total: u64)
@@ -87,6 +93,7 @@ pub fn parse_range(ranges: &Vec<ByteRangeSpec>, total: u64)
         ));
     }
 }
+*/
 
 pub fn now_string() -> String {
     Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
@@ -107,3 +114,26 @@ pub fn system_time_to_date_time(t: SystemTime) -> DateTime<Local> {
     };
     Local.timestamp(sec, nsec)
 }
+
+pub fn error_resp(s: status::Status, msg: &str) -> Response {
+    let mut resp = Response::with((s, format!(
+        r#"<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+</head>
+<body>
+  {root_link}
+  <hr />
+  <div>[<strong style=color:red;>ERROR {code}</strong>]: {msg}</div>
+</body>
+</html>
+"#,
+        root_link=ROOT_LINK,
+        code=s.to_u16(),
+        msg=msg
+    )));
+    resp.headers.set(headers::ContentType::html());
+    resp
+}
+

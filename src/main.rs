@@ -16,12 +16,11 @@ extern crate conduit_mime_types as mime_types;
 
 mod util;
 mod color;
-mod compress;
+mod middlewares;
 
 use std::env;
 use std::fs;
 use std::cmp::Ordering;
-use std::ops::Deref;
 use std::str::FromStr;
 use std::net::IpAddr;
 use std::io::{Read, Seek, SeekFrom};
@@ -34,31 +33,28 @@ use iron::status;
 use iron::method;
 use iron::headers::{ContentEncoding, Encoding, AcceptEncoding, QualityItem};
 use iron::modifiers::Redirect;
-use iron::{Iron, Request, Response, IronResult, IronError, Set, Chain, Handler,
-           BeforeMiddleware, AfterMiddleware};
+use iron::{Iron, Request, Response, IronResult, IronError, Set, Chain, Handler};
 use multipart::server::{Multipart, SaveResult};
 use pretty_bytes::converter::convert;
 use termcolor::{Color, ColorSpec};
 use url::percent_encoding::{percent_decode};
 
 use util::{
+    ROOT_LINK,
     StringError,
-    enable_string, now_string,
-    system_time_to_date_time, encode_link_path, error_io2iron
+    enable_string, now_string, error_resp,
+    system_time_to_date_time, encode_link_path, error_io2iron,
 };
 use color::{Printer, build_spec};
-use compress::{CompressionHandler};
 
-const ROOT_LINK: &'static str = r#"<a href="/"><strong>[Root]</strong></a>"#;
+use middlewares::{AuthChecker, CompressionHandler, RequestLogger};
+
 const ORDER_ASC: &'static str = "asc";
 const ORDER_DESC: &'static str = "desc";
 const DEFAULT_ORDER: &'static str = ORDER_DESC;
 
 lazy_static! {
     static ref MIME_TYPES: mime_types::Types = mime_types::Types::new().unwrap();
-    static ref C_BOLD_GREEN: Option<ColorSpec> = Some(build_spec(Some(Color::Green), true));
-    static ref C_BOLD_YELLOW: Option<ColorSpec> = Some(build_spec(Some(Color::Yellow), true));
-    static ref C_BOLD_RED: Option<ColorSpec> = Some(build_spec(Some(Color::Red), true));
     static ref SORT_FIELDS: Vec<&'static str> = vec!["name", "modified", "size"];
 }
 
@@ -297,29 +293,37 @@ struct MainHandler {
     compress: Option<Vec<String>>
 }
 
-struct AuthChecker { username: String, password: String }
-struct RequestLogger { printer: Printer }
+impl Handler for MainHandler {
+    fn handle(&self, req: &mut Request) -> IronResult<Response> {
+        let mut fs_path = self.root.clone();
+        let path_prefix = req.url.path()
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                percent_decode(s.as_bytes())
+                    .decode_utf8().unwrap()
+                    .to_string()
+            })
+            .collect::<Vec<String>>();
+        for part in path_prefix.iter() {
+            fs_path.push(part);
+        }
 
-fn error_resp(s: status::Status, msg: &str) -> Response {
-    let mut resp = Response::with((s, format!(
-        r#"<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-</head>
-<body>
-  {root_link}
-  <hr />
-  <div>[<strong style=color:red;>ERROR {code}</strong>]: {msg}</div>
-</body>
-</html>
-"#,
-        root_link=ROOT_LINK,
-        code=s.to_u16(),
-        msg=msg
-    )));
-    resp.headers.set(headers::ContentType::html());
-    resp
+        if self.upload && req.method == method::Post {
+            if let Err((s, msg)) = self.save_files(req, &fs_path) {
+                return Ok(error_resp(s, &msg));
+            } else {
+                return Ok(Response::with((status::Found, Redirect(req.url.clone()))))
+            }
+        }
+
+        let path_metadata = try!(fs::metadata(&fs_path).map_err(error_io2iron));
+        if path_metadata.is_dir() {
+            self.list_directory(req, &fs_path, path_prefix)
+        } else {
+            self.send_file(req, &fs_path)
+        }
+    }
 }
 
 impl MainHandler {
@@ -760,131 +764,5 @@ impl MainHandler {
             resp.headers.set(ETag(etag));
         }
         Ok(resp)
-    }
-}
-
-impl Handler for MainHandler {
-    fn handle(&self, req: &mut Request) -> IronResult<Response> {
-        let mut fs_path = self.root.clone();
-        let path_prefix = req.url.path()
-            .into_iter()
-            .filter(|s| !s.is_empty())
-            .map(|s| {
-                percent_decode(s.as_bytes())
-                    .decode_utf8().unwrap()
-                    .to_string()
-            })
-            .collect::<Vec<String>>();
-        for part in path_prefix.iter() {
-            fs_path.push(part);
-        }
-
-        if self.upload && req.method == method::Post {
-            if let Err((s, msg)) = self.save_files(req, &fs_path) {
-                return Ok(error_resp(s, &msg));
-            } else {
-                return Ok(Response::with((status::Found, Redirect(req.url.clone()))))
-            }
-        }
-
-        let path_metadata = try!(fs::metadata(&fs_path).map_err(error_io2iron));
-        if path_metadata.is_dir() {
-            self.list_directory(req, &fs_path, path_prefix)
-        } else {
-            self.send_file(req, &fs_path)
-        }
-    }
-}
-
-impl AuthChecker {
-    fn new(s: &str) -> AuthChecker {
-        let parts = s.splitn(2, ':').collect::<Vec<&str>>();
-        AuthChecker {
-            username: parts[0].to_owned(),
-            password: parts[1].to_owned()
-        }
-    }
-}
-
-impl BeforeMiddleware for AuthChecker {
-    fn before(&self, req: &mut Request) -> IronResult<()> {
-        use iron::headers::{Authorization, Basic};
-
-        match req.headers.get::<Authorization<Basic>>() {
-            Some(&Authorization(Basic { ref username, password: Some(ref password) })) => {
-                if username == self.username.as_str() && password == self.password.as_str() {
-                    Ok(())
-                } else {
-                    Err(IronError {
-                        error: Box::new(StringError("authorization error".to_owned())),
-                        response: Response::with((status::Unauthorized, "Wrong username or password."))
-                    })
-                }
-            }
-            Some(&Authorization(Basic { username: _, password: None })) => {
-                Err(IronError {
-                    error: Box::new(StringError("authorization error".to_owned())),
-                    response: Response::with((status::Unauthorized, "No password found."))
-                })
-            }
-            None => {
-                let mut resp = Response::with(status::Unauthorized);
-                resp.headers.set_raw("WWW-Authenticate", vec![b"Basic realm=\"main\"".to_vec()]);
-                Err(IronError {
-                    error: Box::new(StringError("authorization error".to_owned())),
-                    response: resp
-                })
-            }
-        }
-    }
-}
-
-impl RequestLogger {
-    fn log(&self, req: & Request, resp: &Response) {
-        if let Some(status) = resp.status {
-            let status_color = if status.is_success() {
-                C_BOLD_GREEN.deref()
-            } else if status.is_informational() || status.is_redirection() {
-                C_BOLD_YELLOW.deref()
-            } else {
-                C_BOLD_RED.deref()
-            };
-            self.printer.println_out(
-                // datetime, remote-ip, status-code, method, url-path
-                "[{}] - {} - {} - {} {}",
-                &vec![
-                    (now_string().as_str(), &None),
-                    (req.remote_addr.ip().to_string().as_str(), &None),
-                    (status.to_u16().to_string().as_str(), status_color),
-                    (req.method.to_string().as_str(), &None),
-                    (percent_decode(req.url.as_ref().path().as_bytes())
-                     .decode_utf8().unwrap().to_string().as_str(), &None)
-                ]).unwrap();
-        } else {
-            println!("ERROR: StatusCode missing");
-        }
-    }
-}
-
-impl AfterMiddleware for RequestLogger {
-    fn after(&self, req: &mut Request, resp: Response) -> IronResult<Response> {
-        self.log(req, &resp);
-        Ok(resp)
-    }
-
-    fn catch(&self, req: &mut Request, err: IronError) -> IronResult<Response> {
-        self.log(req, &err.response);
-        let mut unauthorized = false;
-        if let Some(ref s) = err.response.status {
-            if s == &status::Unauthorized {
-                unauthorized = true;
-            }
-        }
-        if unauthorized {
-            Err(err)
-        } else {
-            Ok(error_resp(err.response.status.unwrap_or(status::InternalServerError),
-                       err.error.description()))
-        }
     }
 }
