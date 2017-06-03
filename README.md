@@ -34,7 +34,16 @@ ARGS:
     <root>    Root directory
 ```
 
-# How to use?
+# Installation
+
+### Download binary 
+ - windows-64bit
+ - osx-64bit
+ - linux-64bit
+
+[Release Page](https://github.com/TheWaWaR/simple-http-server/releases)
+
+### Install by cargo
 
 ``` bash
 # Install Rust
