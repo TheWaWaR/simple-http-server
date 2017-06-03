@@ -1,28 +1,13 @@
 
-use std::fmt;
-use std::error::Error;
 use std::io::{Write};
 
 use termcolor::{Color, ColorChoice, ColorSpec, BufferWriter, WriteColor};
 
+use util::StringError;
+
 pub struct Printer {
     outwriter: BufferWriter,
     errwriter: BufferWriter
-}
-
-#[derive(Debug)]
-pub struct FormatError(pub String);
-
-impl fmt::Display for FormatError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Display::fmt("authentication error", f)
-    }
-}
-
-impl Error for FormatError {
-    fn description(&self) -> &str {
-        "authentication error"
-    }
 }
 
 pub fn build_spec(fg: Option<Color>, bold: bool) -> ColorSpec {
@@ -42,26 +27,26 @@ impl Printer {
     }
 
     #[allow(dead_code)]
-    pub fn print_out(&self, fmtstr: &str, args: &Vec<(&str, &Option<ColorSpec>)>) -> Result<(), FormatError> {
+    pub fn print_out(&self, fmtstr: &str, args: &Vec<(&str, &Option<ColorSpec>)>) -> Result<(), StringError> {
         self.print(&self.outwriter, fmtstr, args, false)
     }
 
-    pub fn println_out(&self, fmtstr: &str, args: &Vec<(&str, &Option<ColorSpec>)>) -> Result<(), FormatError> {
+    pub fn println_out(&self, fmtstr: &str, args: &Vec<(&str, &Option<ColorSpec>)>) -> Result<(), StringError> {
         self.print(&self.outwriter, fmtstr, args, true)
     }
 
     #[allow(dead_code)]
-    pub fn print_err(&self, fmtstr: &str, args: &Vec<(&str, &Option<ColorSpec>)>) -> Result<(), FormatError> {
+    pub fn print_err(&self, fmtstr: &str, args: &Vec<(&str, &Option<ColorSpec>)>) -> Result<(), StringError> {
         self.print(&self.errwriter, fmtstr, args, false)
     }
 
-    pub fn println_err(&self, fmtstr: &str, args: &Vec<(&str, &Option<ColorSpec>)>) -> Result<(), FormatError> {
+    pub fn println_err(&self, fmtstr: &str, args: &Vec<(&str, &Option<ColorSpec>)>) -> Result<(), StringError> {
         self.print(&self.errwriter, fmtstr, args, true)
     }
 
 
     fn print(&self, writer: &BufferWriter,
-             fmtstr: &str, args: &Vec<(&str, &Option<ColorSpec>)>, newline: bool) -> Result<(), FormatError> {
+             fmtstr: &str, args: &Vec<(&str, &Option<ColorSpec>)>, newline: bool) -> Result<(), StringError> {
         let mut buffer = writer.buffer();
         let mut arg_iter = args.iter();
         let mut char_iter = fmtstr.chars();
@@ -85,14 +70,14 @@ impl Printer {
                                 }
                                 count += 1;
                             } else {
-                                return Err(FormatError(format!("Not enough arguments (need more than {})", count)));
+                                return Err(StringError(format!("Not enough arguments (need more than {})", count)));
                             }
                         }
                         Some('{') => {
                             buffer.write("{".as_bytes()).unwrap();
                         }
                         _ => {
-                            return Err(FormatError(format!("{{ not closed")));
+                            return Err(StringError(format!("{{ not closed")));
                         }
                     }
                 },
@@ -103,7 +88,7 @@ impl Printer {
                             buffer.write("}".as_bytes()).unwrap();
                         }
                         _ => {
-                            return Err(FormatError(format!("}} not closed")));
+                            return Err(StringError(format!("}} not closed")));
                         }
                     }
                 }
