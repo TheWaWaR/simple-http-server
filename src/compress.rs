@@ -1,12 +1,31 @@
 
-use flate2::Compression;
-use flate2::write::{DeflateEncoder, GzEncoder};
+use std::io;
+
+use flate2::{FlateWriteExt, Compression};
 use iron::{Response, Request, IronResult, AfterMiddleware};
+use iron::response::WriteBody;
 use iron::headers::{ContentLength, ContentEncoding, TransferEncoding, Encoding};
 
-use util::{error_io2iron};
+struct GzipBody(Box<WriteBody>);
+struct DeflateBody(Box<WriteBody>);
 
 pub struct CompressionHandler;
+
+impl WriteBody for GzipBody {
+    fn write_body(&mut self, w: &mut io::Write) -> io::Result<()> {
+        let mut w = w.gz_encode(Compression::Default);
+        self.0.write_body(&mut w)?;
+        w.finish().map(|_| ())
+    }
+}
+
+impl WriteBody for DeflateBody {
+    fn write_body(&mut self, w: &mut io::Write) -> io::Result<()> {
+        let mut w = w.deflate_encode(Compression::Default);
+        self.0.write_body(&mut w)?;
+        w.finish().map(|_| ())
+    }
+}
 
 impl AfterMiddleware for CompressionHandler {
 
@@ -36,26 +55,15 @@ impl AfterMiddleware for CompressionHandler {
 
         if resp.body.is_some() {
             match encoding {
-                Some(Encoding::Deflate) => {
-                    let mut body = resp.body.take().unwrap();
-                    let mut encoder = DeflateEncoder::new(Vec::new(), Compression::Best);
-                    try!(body.write_body(&mut encoder).map_err(error_io2iron));
-                    let compressed_bytes = try!(encoder.finish().map_err(error_io2iron));
-                    resp.headers.set(ContentLength(compressed_bytes.len() as u64));
-                    resp.body = Some(Box::new(compressed_bytes));
-                    // TODO: give up on header::Range
-                    // if let Some(&mut ContentRange(ContentRangeSpec::Bytes{
-                    //     range: Some((offset, end)), instance_length: Some(length)
-                    // })) = resp.headers.get_mut::<ContentRange>() {
-                    // }
-                }
                 Some(Encoding::Gzip) => {
-                    let mut body = resp.body.take().unwrap();
-                    let mut encoder = GzEncoder::new(Vec::new(), Compression::Best);
-                    try!(body.write_body(&mut encoder).map_err(error_io2iron));
-                    let compressed_bytes = try!(encoder.finish().map_err(error_io2iron));
-                    resp.headers.set(ContentLength(compressed_bytes.len() as u64));
-                    resp.body = Some(Box::new(compressed_bytes));
+                    // TransferEncoding will be chunked
+                    resp.headers.remove::<ContentLength>();
+                    resp.body = Some(Box::new(GzipBody(resp.body.take().unwrap())));
+                }
+                Some(Encoding::Deflate) => {
+                    // TransferEncoding will be chunked
+                    resp.headers.remove::<ContentLength>();
+                    resp.body = Some(Box::new(DeflateBody(resp.body.take().unwrap())));
                 }
                 _ => {}
             }
