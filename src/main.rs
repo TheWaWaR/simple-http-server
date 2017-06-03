@@ -153,7 +153,7 @@ fn main() {
              .multiple(true)
              .value_delimiter(",")
              .takes_value(true)
-             .help("Enable file compression: gzip/deflate (Note: disabled on partial request!)"))
+             .help("Enable file compression: gzip/deflate\n    Example: -c=js,d.ts\n    Note: disabled on partial request!"))
         .arg(clap::Arg::with_name("threads")
              .short("t")
              .long("threads")

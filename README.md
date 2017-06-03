@@ -5,27 +5,30 @@
 
 ### Command Line Arguments
 ```
-Simple HTTP(s) Server 0.4.1
+Simple HTTP(s) Server 0.4.2
 
 USAGE:
-    simple-http-server [FLAGS] [OPTIONS] [root]
+    simple-http-server [FLAGS] [OPTIONS] [--] [root]
 
 FLAGS:
     -h, --help       Prints help information
     -i, --index      Enable automatic render index page [index.html, index.htm]
         --nocache    Disable http cache
-        --norange    Disable header::Range support (partial download)
+        --norange    Disable header::Range support (partial request)
         --nosort     Disable directory entries sort (by: name, modified, size)
     -u, --upload     Enable upload files (multiple select)
     -V, --version    Prints version information
 
 OPTIONS:
-    -a, --auth <auth>            HTTP Basic Auth (username:password)
-        --cert <cert>            TLS/SSL certificate (pkcs#12 format)
-        --certpass <certpass>    TLS/SSL certificate password
-        --ip <ip>                IP address to bind [default: 0.0.0.0]
-    -p, --port <port>            Port number [default: 8000]
-    -t, --threads <threads>      How many worker threads [default: 3]
+    -a, --auth <auth>               HTTP Basic Auth (username:password)
+        --cert <cert>               TLS/SSL certificate (pkcs#12 format)
+        --certpass <certpass>       TLS/SSL certificate password
+    -c, --compress <compress>...    Enable file compression: gzip/deflate
+                                        Example: -c=js,d.ts
+                                        Note: disabled on partial request!
+        --ip <ip>                   IP address to bind [default: 0.0.0.0]
+    -p, --port <port>               Port number [default: 8000]
+    -t, --threads <threads>         How many worker threads [default: 3]
 
 ARGS:
     <root>    Root directory
