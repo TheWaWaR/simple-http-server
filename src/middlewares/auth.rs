@@ -24,8 +24,8 @@ impl BeforeMiddleware for AuthChecker {
         use iron::headers::{Authorization, Basic};
 
         match req.headers.get::<Authorization<Basic>>() {
-            Some(&Authorization(Basic { ref username, password: Some(ref password) })) => {
-                if username == self.username.as_str() && password == self.password.as_str() {
+            Some(&Authorization(Basic{ ref username, ref password })) => {
+                if username == self.username.as_str() && password == &Some(self.password.clone()) {
                     Ok(())
                 } else {
                     Err(IronError {
@@ -33,12 +33,6 @@ impl BeforeMiddleware for AuthChecker {
                         response: Response::with((status::Unauthorized, "Wrong username or password."))
                     })
                 }
-            }
-            Some(&Authorization(Basic { username: _, password: None })) => {
-                Err(IronError {
-                    error: Box::new(StringError("authorization error".to_owned())),
-                    response: Response::with((status::Unauthorized, "No password found."))
-                })
             }
             None => {
                 let mut resp = Response::with(status::Unauthorized);

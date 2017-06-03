@@ -638,14 +638,7 @@ impl MainHandler {
                         // [Reference]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/If-Match
                         // Check header::If-Match
                         if let Some(&IfMatch::Items(ref items)) = req.headers.get::<IfMatch>() {
-                            let mut matched = false;
-                            for item in items {
-                                if item.strong_eq(&etag) {
-                                    matched = true;
-                                    break;
-                                }
-                            }
-                            if !matched {
+                            if items.iter().position(|item| item.strong_eq(&etag)).is_none() {
                                 return Err(IronError::new(
                                     StringError("Etag not matched".to_owned()),
                                     status::RangeNotSatisfiable

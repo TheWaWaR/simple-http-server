@@ -52,17 +52,13 @@ impl AfterMiddleware for RequestLogger {
 
     fn catch(&self, req: &mut Request, err: IronError) -> IronResult<Response> {
         self.log(req, &err.response);
-        let mut unauthorized = false;
-        if let Some(ref s) = err.response.status {
-            if s == &status::Unauthorized {
-                unauthorized = true;
-            }
-        }
-        if unauthorized {
+        if err.response.status == Some(status::Unauthorized) {
             Err(err)
         } else {
-            Ok(error_resp(err.response.status.unwrap_or(status::InternalServerError),
-                       err.error.description()))
+            Ok(error_resp(
+                err.response.status.unwrap_or(status::InternalServerError),
+                err.error.description()
+            ))
         }
     }
 }
