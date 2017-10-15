@@ -10,6 +10,7 @@ extern crate filetime;
 extern crate termcolor;
 extern crate url;
 extern crate iron;
+extern crate iron_cors;
 extern crate multipart;
 extern crate hyper_native_tls;
 extern crate conduit_mime_types as mime_types;
@@ -34,6 +35,7 @@ use iron::method;
 use iron::headers::{ContentEncoding, Encoding, AcceptEncoding, QualityItem};
 use iron::modifiers::Redirect;
 use iron::{Iron, Request, Response, IronResult, IronError, Set, Chain, Handler};
+use iron_cors::CorsMiddleware;
 use multipart::server::{Multipart, SaveResult};
 use pretty_bytes::converter::convert;
 use termcolor::{Color, ColorSpec};
@@ -105,6 +107,9 @@ fn main() {
                  }
              })
              .help("TLS/SSL certificate (pkcs#12 format)"))
+        .arg(clap::Arg::with_name("cors")
+             .long("cors")
+             .help("Enable CORS via the \"Access-Control-Allow-Origin\" header"))
         .arg(clap::Arg::with_name("certpass").
              long("certpass")
              .takes_value(true)
@@ -183,6 +188,7 @@ fn main() {
     let range = !matches.is_present("norange");
     let cert = matches.value_of("cert");
     let certpass = matches.value_of("certpass");
+    let cors = matches.occurrences_of("cors") != 0;
     let ip = matches.value_of("ip").unwrap();
     let port = matches
         .value_of("port")
@@ -220,7 +226,7 @@ fn main() {
         format!("{:?}", compression_exts)
     };
     printer.println_out(
-        r#"  Index: {}, Upload: {}, Cache: {}, Range: {}, Sort: {}, Threads: {}
+        r#"  Index: {}, Upload: {}, Cache: {}, Cors: {}, Range: {}, Sort: {}, Threads: {}
    Auth: {}, Compression: {}
   https: {}, Cert: {}, Cert-Password: {}
    Root: {}
@@ -230,6 +236,7 @@ Address: {}
             enable_string(index),
             enable_string(upload),
             enable_string(cache),
+            (if cors { "enabled" } else { "disabled" }).to_string(),
             enable_string(range),
             enable_string(sort),
             threads.to_string(),
@@ -255,6 +262,9 @@ Address: {}
                  .map(|s| format!(".{}", s))
                  .collect())
     });
+    if cors {
+        chain.link_around(CorsMiddleware::with_allow_any(true));
+    }
     if let Some(auth) = auth {
         chain.link_before(AuthChecker::new(auth));
     }
