@@ -188,7 +188,7 @@ fn main() {
     let range = !matches.is_present("norange");
     let cert = matches.value_of("cert");
     let certpass = matches.value_of("certpass");
-    let cors = matches.occurrences_of("cors") != 0;
+    let cors = matches.is_present("cors");
     let ip = matches.value_of("ip").unwrap();
     let port = matches
         .value_of("port")
@@ -236,7 +236,7 @@ Address: {}
             enable_string(index),
             enable_string(upload),
             enable_string(cache),
-            (if cors { "enabled" } else { "disabled" }).to_string(),
+            enable_string(cors),
             enable_string(range),
             enable_string(sort),
             threads.to_string(),
