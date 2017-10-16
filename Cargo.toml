@@ -1,10 +1,11 @@
 [package]
 name = "simple-http-server"
-version = "0.4.3"
+version = "0.4.4"
 authors = ["thewawar <thewawar@gmail.com>"]
 license = "MIT"
-description = "SimpleHTTPServer.py"
-keywords = ["simple", "http", "server", "static"]
+description = "Simple HTTP server"
+readme = "README.md"
+keywords = ["simple", "http", "server", "static", "file"]
 repository = "https://github.com/TheWaWaR/simple-http-server"
 
 [dependencies]

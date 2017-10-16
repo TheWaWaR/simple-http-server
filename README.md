@@ -5,12 +5,13 @@
 
 ### Command Line Arguments
 ```
-Simple HTTP(s) Server 0.4.2
+Simple HTTP(s) Server 0.4.4
 
 USAGE:
     simple-http-server [FLAGS] [OPTIONS] [--] [root]
 
 FLAGS:
+        --cors       Enable CORS via the "Access-Control-Allow-Origin" header
     -h, --help       Prints help information
     -i, --index      Enable automatic render index page [index.html, index.htm]
         --nocache    Disable http cache
@@ -77,3 +78,4 @@ simple-http-server -h
 - [x] Sort by: filename, filesize, modifled
 - [x] HTTPS support
 - [x] Content-Encoding: gzip/deflate
+- [x] Added CORS headers support
