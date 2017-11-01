@@ -62,6 +62,7 @@ lazy_static! {
 
 fn main() {
     let matches = clap::App::new("Simple HTTP(s) Server")
+        .setting(clap::AppSettings::ColoredHelp)
         .version(crate_version!())
         .arg(clap::Arg::with_name("root")
              .index(1)
