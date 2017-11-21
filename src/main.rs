@@ -51,9 +51,9 @@ use color::{Printer, build_spec};
 
 use middlewares::{AuthChecker, CompressionHandler, RequestLogger};
 
-const ORDER_ASC: &'static str = "asc";
-const ORDER_DESC: &'static str = "desc";
-const DEFAULT_ORDER: &'static str = ORDER_DESC;
+const ORDER_ASC: &str = "asc";
+const ORDER_DESC: &str = "desc";
+const DEFAULT_ORDER: &str = ORDER_DESC;
 
 lazy_static! {
     static ref MIME_TYPES: mime_types::Types = mime_types::Types::new().unwrap();
@@ -180,8 +180,8 @@ fn main() {
 
     let root = matches
         .value_of("root")
-        .map(|s| PathBuf::from(s))
-        .unwrap_or(env::current_dir().unwrap());
+        .map(PathBuf::from)
+        .unwrap_or_else(|| env::current_dir().unwrap());
     let index = matches.is_present("index");
     let upload = matches.is_present("upload");
     let sort = !matches.is_present("nosort");
@@ -217,7 +217,7 @@ fn main() {
     let color_blue = Some(build_spec(Some(Color::Blue), false));
     let addr = format!("{}:{}", ip, port);
     let compression_exts = compress.clone()
-        .unwrap_or(Vec::new())
+        .unwrap_or_default()
         .iter()
         .map(|s| format!("*.{}", s))
         .collect::<Vec<String>>();
@@ -285,7 +285,7 @@ Address: {}
         server.http(&addr)
     };
     if let Err(e) = rv {
-        printer.println_err("{}: Can not bind on {}, {}", &vec![
+        printer.println_err("{}: Can not bind on {}, {}", &[
             ("ERROR", &Some(build_spec(Some(Color::Red), true))),
             (addr.as_str(), &None),
             (e.to_string().as_str(), &None)
@@ -316,7 +316,7 @@ impl Handler for MainHandler {
                     .to_string()
             })
             .collect::<Vec<String>>();
-        for part in path_prefix.iter() {
+        for part in &path_prefix {
             fs_path.push(part);
         }
 
@@ -330,7 +330,7 @@ impl Handler for MainHandler {
 
         let path_metadata = try!(fs::metadata(&fs_path).map_err(error_io2iron));
         if path_metadata.is_dir() {
-            self.list_directory(req, &fs_path, path_prefix)
+            self.list_directory(req, &fs_path, &path_prefix)
         } else {
             self.send_file(req, &fs_path)
         }
@@ -370,7 +370,7 @@ impl MainHandler {
         }
     }
 
-    fn list_directory(&self, req: &mut Request, fs_path: &PathBuf, path_prefix: Vec<String>) -> IronResult<Response> {
+    fn list_directory(&self, req: &mut Request, fs_path: &PathBuf, path_prefix: &[String]) -> IronResult<Response> {
 
         struct Entry {
             filename: String,
@@ -392,11 +392,11 @@ impl MainHandler {
         }
 
         // Breadcrumb navigation
-        let breadcrumb = if path_prefix.len() > 0 {
-            let mut breadcrumb = path_prefix.clone();
+        let breadcrumb = if !path_prefix.is_empty() {
+            let mut breadcrumb = path_prefix.to_owned();
             let mut bread_links: Vec<String> = Vec::new();
             bread_links.push(breadcrumb.pop().unwrap().to_owned());
-            while breadcrumb.len() > 0 {
+            while !breadcrumb.is_empty() {
                 bread_links.push(format!(
                     r#"<a href="/{link}/"><strong>{label}</strong></a>"#,
                     link=encode_link_path(&breadcrumb), label=breadcrumb.pop().unwrap().to_owned(),
@@ -418,7 +418,7 @@ impl MainHandler {
                     order = Some(v.to_string());
                 }
             }
-            let order = order.unwrap_or(DEFAULT_ORDER.to_owned());
+            let order = order.unwrap_or_else(|| DEFAULT_ORDER.to_owned());
             let mut order_labels = BTreeMap::new();
             for field in SORT_FIELDS.iter() {
                 if sort_field == Some((*field).to_owned()) && order == ORDER_DESC {
@@ -466,7 +466,7 @@ impl MainHandler {
                 });
             }
 
-            let mut current_link = path_prefix.clone();
+            let mut current_link = path_prefix.to_owned();
             current_link.push("".to_owned());
             format!(r#"
 <tr>
@@ -484,10 +484,10 @@ impl MainHandler {
         }  else { "".to_owned() };
 
         // Goto parent directory link
-        if path_prefix.len() > 0 {
-            let mut link = path_prefix.clone();
+        if !path_prefix.is_empty() {
+            let mut link = path_prefix.to_owned();
             link.pop();
-            if link.len() > 0 {
+            if !link.is_empty() {
                 link.push("".to_owned());
             }
             rows.push(format!(
@@ -507,8 +507,8 @@ impl MainHandler {
         // Directory entries
         for Entry{ filename, metadata } in entries {
             if self.index {
-                for fname in vec!["index.html", "index.htm"] {
-                    if filename == fname {
+                for fname in &["index.html", "index.htm"] {
+                    if filename == *fname {
                         // Automatic render index page
                         fs_path.push(filename);
                         return self.send_file(req, &fs_path);
@@ -531,7 +531,7 @@ impl MainHandler {
                 "".to_owned()
             };
             // * Entry.link
-            let mut link = path_prefix.clone();
+            let mut link = path_prefix.to_owned();
             link.push(filename.clone());
             if metadata.is_dir() {
                 link.push("".to_owned());
@@ -567,7 +567,7 @@ impl MainHandler {
   <input type="submit" value="Upload" />
 </form>
 "#,
-                path=encode_link_path(&path_prefix))
+                path=encode_link_path(path_prefix))
         } else { "".to_owned() };
 
         // Put all parts together
@@ -631,9 +631,10 @@ impl MainHandler {
         }
         match req.method {
             Method::Head => {
-                let content_type = req.headers.get::<ContentType>()
-                    .map(|t| t.clone())
-                    .unwrap_or(ContentType(Mime(TopLevel::Text, SubLevel::Plain, vec![])));
+                let content_type = req.headers
+                    .get::<ContentType>()
+                    .cloned()
+                    .unwrap_or_else(|| ContentType(Mime(TopLevel::Text, SubLevel::Plain, vec![])));
                 resp.headers.set(content_type);
                 resp.headers.set(ContentLength(metadata.len()));
             },
@@ -671,8 +672,8 @@ impl MainHandler {
                     match range {
                         Some(&Range::Bytes(ref ranges)) => {
                             if let Some(range) = ranges.get(0) {
-                                let (offset, length) = match range {
-                                    &ByteRangeSpec::FromTo(x, mut y) => { // "x-y"
+                                let (offset, length) = match *range {
+                                    ByteRangeSpec::FromTo(x, mut y) => { // "x-y"
                                         if x >= metadata.len() || x > y {
                                             return Err(IronError::new(
                                                 StringError(format!("Invalid range(x={}, y={})", x, y)),
@@ -684,7 +685,7 @@ impl MainHandler {
                                         }
                                         (x, y - x + 1)
                                     }
-                                    &ByteRangeSpec::AllFrom(x) => { // "x-"
+                                    ByteRangeSpec::AllFrom(x) => { // "x-"
                                         if x >= metadata.len() {
                                             return Err(IronError::new(
                                                 StringError(format!(
@@ -695,7 +696,7 @@ impl MainHandler {
                                         }
                                         (x, metadata.len() - x)
                                     }
-                                    &ByteRangeSpec::Last(mut x) => { // "-x"
+                                    ByteRangeSpec::Last(mut x) => { // "-x"
                                         if x > metadata.len() {
                                             x = metadata.len();
                                         }
@@ -746,7 +747,7 @@ impl MainHandler {
         if let Some(ref exts) = self.compress {
             let path_str = path.to_string_lossy();
             if resp.status != Some(status::PartialContent) &&
-                exts.iter().position(|ext| path_str.ends_with(ext)).is_some() {
+                exts.iter().any(|ext| path_str.ends_with(ext)) {
                 if let Some(&AcceptEncoding(ref encodings)) = req.headers.get::<AcceptEncoding>() {
                     for &QualityItem{ ref item, ..} in encodings {
                         if *item == Encoding::Deflate || *item == Encoding::Gzip {

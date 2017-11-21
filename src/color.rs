@@ -27,26 +27,26 @@ impl Printer {
     }
 
     #[allow(dead_code)]
-    pub fn print_out(&self, fmtstr: &str, args: &Vec<(&str, &Option<ColorSpec>)>) -> Result<(), StringError> {
+    pub fn print_out(&self, fmtstr: &str, args: &[(&str, &Option<ColorSpec>)]) -> Result<(), StringError> {
         self.print(&self.outwriter, fmtstr, args, false)
     }
 
-    pub fn println_out(&self, fmtstr: &str, args: &Vec<(&str, &Option<ColorSpec>)>) -> Result<(), StringError> {
+    pub fn println_out(&self, fmtstr: &str, args: &[(&str, &Option<ColorSpec>)]) -> Result<(), StringError> {
         self.print(&self.outwriter, fmtstr, args, true)
     }
 
     #[allow(dead_code)]
-    pub fn print_err(&self, fmtstr: &str, args: &Vec<(&str, &Option<ColorSpec>)>) -> Result<(), StringError> {
+    pub fn print_err(&self, fmtstr: &str, args: &[(&str, &Option<ColorSpec>)]) -> Result<(), StringError> {
         self.print(&self.errwriter, fmtstr, args, false)
     }
 
-    pub fn println_err(&self, fmtstr: &str, args: &Vec<(&str, &Option<ColorSpec>)>) -> Result<(), StringError> {
+    pub fn println_err(&self, fmtstr: &str, args: &[(&str, &Option<ColorSpec>)]) -> Result<(), StringError> {
         self.print(&self.errwriter, fmtstr, args, true)
     }
 
 
     fn print(&self, writer: &BufferWriter,
-             fmtstr: &str, args: &Vec<(&str, &Option<ColorSpec>)>, newline: bool) -> Result<(), StringError> {
+             fmtstr: &str, args: &[(&str, &Option<ColorSpec>)], newline: bool) -> Result<(), StringError> {
         let mut buffer = writer.buffer();
         let mut arg_iter = args.iter();
         let mut char_iter = fmtstr.chars();
@@ -58,12 +58,12 @@ impl Printer {
                     let c = char_iter.next();
                     match c {
                         Some('}') => {
-                            if let Some(&(ref s, ref colorspec)) = arg_iter.next() {
+                            if let Some(&(s, colorspec)) = arg_iter.next() {
                                 if !s.is_empty() {
-                                    if let &&Some(ref colorspec) = colorspec {
+                                    if let Some(ref colorspec) = *colorspec {
                                         buffer.set_color(colorspec).unwrap();
                                     }
-                                    buffer.write(s.as_bytes()).unwrap();
+                                    buffer.write_all(s.as_bytes()).unwrap();
                                     if colorspec.is_some() {
                                         buffer.reset().unwrap();
                                     }
@@ -74,10 +74,10 @@ impl Printer {
                             }
                         }
                         Some('{') => {
-                            buffer.write("{".as_bytes()).unwrap();
+                            buffer.write_all(b"{").unwrap();
                         }
                         _ => {
-                            return Err(StringError(format!("{{ not closed")));
+                            return Err(StringError("{{ not closed".to_owned()));
                         }
                     }
                 },
@@ -85,22 +85,22 @@ impl Printer {
                     let c = char_iter.next();
                     match c {
                         Some('}') => {
-                            buffer.write("}".as_bytes()).unwrap();
+                            buffer.write_all(b"}").unwrap();
                         }
                         _ => {
-                            return Err(StringError(format!("}} not closed")));
+                            return Err(StringError("}} not closed".to_owned()));
                         }
                     }
                 }
-                c @ _ => {
+                c => {
                     let mut buf = [0; 4];
-                    buffer.write(c.encode_utf8(&mut buf).as_bytes()).unwrap();
+                    buffer.write_all(c.encode_utf8(&mut buf).as_bytes()).unwrap();
                 }
             }
             current = char_iter.next();
         }
         if newline {
-            buffer.write("\n".as_bytes()).unwrap();
+            buffer.write_all(b"\n").unwrap();
         }
         writer.print(&buffer).unwrap();
         Ok(())

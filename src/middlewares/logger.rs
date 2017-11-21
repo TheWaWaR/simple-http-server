@@ -30,7 +30,7 @@ impl RequestLogger {
             self.printer.println_out(
                 // datetime, remote-ip, status-code, method, url-path
                 "[{}] - {} - {} - {} {}",
-                &vec![
+                &[
                     (now_string().as_str(), &None),
                     (req.remote_addr.ip().to_string().as_str(), &None),
                     (status.to_u16().to_string().as_str(), status_color),

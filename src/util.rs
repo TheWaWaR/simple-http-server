@@ -10,7 +10,7 @@ use iron::{IronError, Response};
 use url::percent_encoding::{utf8_percent_encode, PATH_SEGMENT_ENCODE_SET};
 use chrono::{DateTime, Local, TimeZone};
 
-pub const ROOT_LINK: &'static str = r#"<a href="/"><strong>[Root]</strong></a>"#;
+pub const ROOT_LINK: &str = r#"<a href="/"><strong>[Root]</strong></a>"#;
 
 #[derive(Debug)]
 pub struct StringError(pub String);
@@ -31,7 +31,7 @@ pub fn enable_string(value: bool) -> String {
     (if value { "enabled" } else { "disabled" }).to_owned()
 }
 
-pub fn encode_link_path(path: &Vec<String>) -> String {
+pub fn encode_link_path(path: &[String]) -> String {
     path.iter().map(|s| {
         utf8_percent_encode(s, PATH_SEGMENT_ENCODE_SET).to_string()
     }).collect::<Vec<String>>().join("/")
