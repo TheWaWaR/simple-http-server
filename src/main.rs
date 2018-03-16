@@ -24,7 +24,7 @@ use std::fs;
 use std::cmp::Ordering;
 use std::str::FromStr;
 use std::net::IpAddr;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{self, Read, Seek, SeekFrom};
 use std::path::{PathBuf, Path};
 use std::error::Error;
 use std::collections::BTreeMap;
@@ -176,6 +176,22 @@ fn main() {
                  }
              })
              .help("How many worker threads"))
+        .arg(clap::Arg::with_name("try-file-404")
+             .long("try-file")
+             .visible_alias("try-file-404")
+             .takes_value(true)
+             .value_name("PATH")
+             .validator(|s| {
+                 match fs::metadata(s) {
+                     Ok(metadata) => {
+                         if metadata.is_file() { Ok(()) } else {
+                             Err("Not a file".to_owned())
+                         }
+                     },
+                     Err(e) => Err(e.description().to_string())
+                 }
+             })
+             .help("serve this file (server root relative) in place of missing files (useful for single page apps)"))
         .get_matches();
 
     let root = matches
@@ -203,17 +219,9 @@ fn main() {
         .unwrap()
         .parse::<u8>()
         .unwrap();
+    let try_file_404 = matches.value_of("try-file-404");
 
     let printer = Printer::new();
-    // TODO: may remove it later
-    // if range && compress.is_some() {
-    //     printer.println_err(
-    //         "{}: Range and Compression can not both enabled! You may use `{}` to disable Range.", &vec![
-    //             ("ERROR", &Some(build_spec(Some(Color::Red), true))),
-    //             ("--norange", &Some(build_spec(Some(Color::Green), false)))
-    //     ]).unwrap();
-    //     std::process::exit(1);
-    // }
     let color_blue = Some(build_spec(Some(Color::Blue), false));
     let addr = format!("{}:{}", ip, port);
     let compression_exts = compress.clone()
@@ -227,11 +235,12 @@ fn main() {
         format!("{:?}", compression_exts)
     };
     printer.println_out(
-        r#"  Index: {}, Upload: {}, Cache: {}, Cors: {}, Range: {}, Sort: {}, Threads: {}
-   Auth: {}, Compression: {}
-  https: {}, Cert: {}, Cert-Password: {}
-   Root: {}
-Address: {}
+        r#"     Index: {}, Upload: {}, Cache: {}, Cors: {}, Range: {}, Sort: {}, Threads: {}
+      Auth: {}, Compression: {}
+     https: {}, Cert: {}, Cert-Password: {}
+      Root: {},
+TryFile404: {}
+   Address: {}
 ======== [{}] ========"#,
         &vec![
             enable_string(index),
@@ -247,6 +256,7 @@ Address: {}
             cert.unwrap_or("").to_owned(),
             certpass.unwrap_or("").to_owned(),
             root.to_str().unwrap().to_owned(),
+            try_file_404.unwrap_or("").to_owned(),
             format!("{}://{}", if cert.is_some() {"https"} else {"http"}, addr),
             now_string()
         ].iter()
@@ -261,7 +271,8 @@ Address: {}
             .map(|exts| exts
                  .iter()
                  .map(|s| format!(".{}", s))
-                 .collect())
+                 .collect()),
+        try_file_404: try_file_404.map(PathBuf::from)
     });
     if cors {
         chain.link_around(CorsMiddleware::with_allow_any(true));
@@ -301,7 +312,8 @@ struct MainHandler {
     cache: bool,
     range: bool,
     sort: bool,
-    compress: Option<Vec<String>>
+    compress: Option<Vec<String>>,
+    try_file_404: Option<PathBuf>
 }
 
 impl Handler for MainHandler {
@@ -328,7 +340,28 @@ impl Handler for MainHandler {
             }
         }
 
-        let path_metadata = try!(fs::metadata(&fs_path).map_err(error_io2iron));
+        let path_metadata = match fs::metadata(&fs_path) {
+            Ok(value) => value,
+            Err(err) => {
+                let status = match err.kind() {
+                    io::ErrorKind::PermissionDenied => status::Forbidden,
+                    io::ErrorKind::NotFound => {
+                        if let Some(ref p) = self.try_file_404 {
+                            if Some(true) == fs::metadata(p)
+                                .ok()
+                                .and_then(|meta| Some(meta.is_file()))
+                            {
+                                return self.send_file(req, p);
+                            }
+                        }
+                        status::NotFound
+                    },
+                    _ => status::InternalServerError
+                };
+                return Err(IronError::new(err, status));
+            }
+        };
+
         if path_metadata.is_dir() {
             self.list_directory(req, &fs_path, &path_prefix)
         } else {
@@ -617,7 +650,7 @@ impl MainHandler {
         use filetime::FileTime;
 
         let path = path.as_ref();
-        let metadata = try!(fs::metadata(path).map_err(error_io2iron));
+        let metadata = fs::metadata(path).map_err(error_io2iron)?;
 
         let time = FileTime::from_last_modification_time(&metadata);
         let modified = time::Timespec::new(time.seconds() as i64, 0);
@@ -703,8 +736,8 @@ impl MainHandler {
                                         (metadata.len() - x, x)
                                     }
                                 };
-                                let mut file = try!(fs::File::open(path).map_err(error_io2iron));
-                                try!(file.seek(SeekFrom::Start(offset)).map_err(error_io2iron));
+                                let mut file = fs::File::open(path).map_err(error_io2iron)?;
+                                file.seek(SeekFrom::Start(offset)).map_err(error_io2iron)?;
                                 let take = file.take(length);
 
                                 resp.headers.set(ContentLength(length));

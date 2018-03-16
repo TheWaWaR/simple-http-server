@@ -4,8 +4,9 @@
 <img src="./screenshot.png" width="80%" height="80%">
 
 ### Command Line Arguments
+
 ```
-Simple HTTP(s) Server 0.4.4
+Simple HTTP(s) Server 0.4.5
 
 USAGE:
     simple-http-server [FLAGS] [OPTIONS] [--] [root]
@@ -30,6 +31,7 @@ OPTIONS:
         --ip <ip>                   IP address to bind [default: 0.0.0.0]
     -p, --port <port>               Port number [default: 8000]
     -t, --threads <threads>         How many worker threads [default: 3]
+        --try-file <PATH>           serve this file (server root relative) in place of missing files (useful for single page apps) [aliases: try-file-404]
 
 ARGS:
     <root>    Root directory
