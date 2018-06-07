@@ -192,6 +192,11 @@ fn main() {
                  }
              })
              .help("serve this file (server root relative) in place of missing files (useful for single page apps)"))
+        .arg(clap::Arg::with_name("silent")
+             .long("silent")
+             .short("s")
+             .takes_value(false)
+             .help("Disable all outputs"))
         .get_matches();
 
     let root = matches
@@ -234,35 +239,39 @@ fn main() {
     } else {
         format!("{:?}", compression_exts)
     };
-    printer.println_out(
-        r#"     Index: {}, Upload: {}, Cache: {}, Cors: {}, Range: {}, Sort: {}, Threads: {}
-      Auth: {}, Compression: {}
-     https: {}, Cert: {}, Cert-Password: {}
-      Root: {},
-TryFile404: {}
-   Address: {}
-======== [{}] ========"#,
-        &vec![
-            enable_string(index),
-            enable_string(upload),
-            enable_string(cache),
-            enable_string(cors),
-            enable_string(range),
-            enable_string(sort),
-            threads.to_string(),
-            auth.unwrap_or("disabled").to_string(),
-            compression_string,
-            (if cert.is_some() { "enabled" } else { "disabled" }).to_string(),
-            cert.unwrap_or("").to_owned(),
-            certpass.unwrap_or("").to_owned(),
-            root.to_str().unwrap().to_owned(),
-            try_file_404.unwrap_or("").to_owned(),
-            format!("{}://{}", if cert.is_some() {"https"} else {"http"}, addr),
-            now_string()
-        ].iter()
-            .map(|s| (s.as_str(), &color_blue))
-            .collect::<Vec<(&str, &Option<ColorSpec>)>>()
-    ).unwrap();
+    let silent = matches.is_present("silent");
+
+    if ! silent {
+        printer.println_out(
+            r#"     Index: {}, Upload: {}, Cache: {}, Cors: {}, Range: {}, Sort: {}, Threads: {}
+          Auth: {}, Compression: {}
+         https: {}, Cert: {}, Cert-Password: {}
+          Root: {},
+    TryFile404: {}
+       Address: {}
+    ======== [{}] ========"#,
+            &vec![
+                enable_string(index),
+                enable_string(upload),
+                enable_string(cache),
+                enable_string(cors),
+                enable_string(range),
+                enable_string(sort),
+                threads.to_string(),
+                auth.unwrap_or("disabled").to_string(),
+                compression_string,
+                (if cert.is_some() { "enabled" } else { "disabled" }).to_string(),
+                cert.unwrap_or("").to_owned(),
+                certpass.unwrap_or("").to_owned(),
+                root.to_str().unwrap().to_owned(),
+                try_file_404.unwrap_or("").to_owned(),
+                format!("{}://{}", if cert.is_some() {"https"} else {"http"}, addr),
+                now_string()
+            ].iter()
+                .map(|s| (s.as_str(), &color_blue))
+                .collect::<Vec<(&str, &Option<ColorSpec>)>>()
+        ).unwrap();
+    }
 
     let mut chain = Chain::new(MainHandler{
         root, index, upload, cache, range, sort,
@@ -285,7 +294,9 @@ TryFile404: {}
             chain.link_after(CompressionHandler);
         }
     }
-    chain.link_after(RequestLogger{ printer: Printer::new() });
+    if ! silent {
+        chain.link_after(RequestLogger{ printer: Printer::new() });
+    }
     let mut server = Iron::new(chain);
     server.threads = threads as usize;
     let rv = if let Some(cert) = cert {

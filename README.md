@@ -4,7 +4,6 @@
 <img src="./screenshot.png" width="80%" height="80%">
 
 ### Command Line Arguments
-
 ```
 Simple HTTP(s) Server 0.4.5
 
@@ -18,6 +17,7 @@ FLAGS:
         --nocache    Disable http cache
         --norange    Disable header::Range support (partial request)
         --nosort     Disable directory entries sort (by: name, modified, size)
+    -s, --silent     Disable all outputs
     -u, --upload     Enable upload files (multiple select)
     -V, --version    Prints version information
 
@@ -81,3 +81,4 @@ simple-http-server -h
 - [x] HTTPS support
 - [x] Content-Encoding: gzip/deflate
 - [x] Added CORS headers support
+- [x] Silent mode
