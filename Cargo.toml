@@ -1,6 +1,6 @@
 [package]
 name = "simple-http-server"
-version = "0.4.5"
+version = "0.4.6"
 authors = ["thewawar <thewawar@gmail.com>"]
 license = "MIT"
 description = "Simple HTTP server"
