@@ -453,7 +453,7 @@ impl MainHandler {
 
         // Sort links
         let sort_links = if self.sort {
-            let mut sort_field = None;
+            let mut sort_field = Some(String::from("name"));
             let mut order = None;
             for (k, v) in req.url.as_ref().query_pairs() {
                 if k == "sort" {
