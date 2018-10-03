@@ -14,6 +14,7 @@ extern crate iron_cors;
 extern crate multipart;
 extern crate hyper_native_tls;
 extern crate conduit_mime_types as mime_types;
+extern crate htmlescape;
 
 mod util;
 mod color;
@@ -40,6 +41,7 @@ use multipart::server::{Multipart, SaveResult};
 use pretty_bytes::converter::convert;
 use termcolor::{Color, ColorSpec};
 use url::percent_encoding::{percent_decode};
+use htmlescape::encode_minimal;
 
 use util::{
     ROOT_LINK,
@@ -443,7 +445,8 @@ impl MainHandler {
             while !breadcrumb.is_empty() {
                 bread_links.push(format!(
                     r#"<a href="/{link}/"><strong>{label}</strong></a>"#,
-                    link=encode_link_path(&breadcrumb), label=breadcrumb.pop().unwrap().to_owned(),
+                    link=encode_link_path(&breadcrumb),
+                    label=encode_minimal(&breadcrumb.pop().unwrap().to_owned()),
                 ));
             }
             bread_links.push(ROOT_LINK.to_owned());
@@ -596,7 +599,7 @@ impl MainHandler {
 "#,
                 linkstyle=link_style,
                 link=encode_link_path(&link),
-                label=file_name_label,
+                label=encode_minimal(&file_name_label),
                 modified=file_modified,
                 filesize=file_size
             ));
