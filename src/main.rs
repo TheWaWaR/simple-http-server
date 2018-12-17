@@ -144,9 +144,9 @@ fn main() {
              .takes_value(true)
              .validator(|s| {
                  let parts = s.splitn(2, ':').collect::<Vec<&str>>();
-                 if parts.len() < 2 || parts.len() >= 2 && parts[1].len() < 1 {
+                 if parts.len() < 2 || parts.len() >= 2 && parts[1].is_empty() {
                      Err("no password found".to_owned())
-                 } else if parts[0].len() < 1 {
+                 } else if parts[0].is_empty() {
                      Err("no username found".to_owned())
                  } else {
                      Ok(())
@@ -706,7 +706,7 @@ impl MainHandler {
                     // [Reference]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/If-Range
                     let matched_ifrange = match req.headers.get::<IfRange>() {
                         Some(&IfRange::EntityTag(ref etag_ifrange)) => etag.weak_eq(etag_ifrange),
-                        Some(&IfRange::Date(HttpDate(ref date_ifrange))) => &time::at(modified) <= date_ifrange,
+                        Some(&IfRange::Date(HttpDate(ref date_ifrange))) => time::at(modified) <= *date_ifrange,
                         None => true
                     };
                     if !matched_ifrange {
