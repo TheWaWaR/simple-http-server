@@ -1,10 +1,9 @@
-
 use std::io;
 
-use flate2::{FlateWriteExt, Compression};
-use iron::{Response, Request, IronResult, AfterMiddleware};
+use flate2::{Compression, FlateWriteExt};
+use iron::headers::{ContentEncoding, ContentLength, Encoding, TransferEncoding};
 use iron::response::WriteBody;
-use iron::headers::{ContentLength, ContentEncoding, TransferEncoding, Encoding};
+use iron::{AfterMiddleware, IronResult, Request, Response};
 
 // [Reference]: https://github.com/iron/iron/issues/548
 struct GzipBody(Box<WriteBody>);
@@ -29,7 +28,6 @@ impl WriteBody for DeflateBody {
 pub struct CompressionHandler;
 
 impl AfterMiddleware for CompressionHandler {
-
     fn after(&self, _: &mut Request, mut resp: Response) -> IronResult<Response> {
         if let Some(&ContentLength(length)) = resp.headers.get::<ContentLength>() {
             if length <= 256 {

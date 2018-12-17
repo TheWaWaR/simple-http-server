@@ -1,13 +1,12 @@
-
 use std::ops::Deref;
 
 use iron::status;
-use iron::{Request, Response, AfterMiddleware, IronError, IronResult};
+use iron::{AfterMiddleware, IronError, IronResult, Request, Response};
 use termcolor::{Color, ColorSpec};
-use url::percent_encoding::{percent_decode};
+use url::percent_encoding::percent_decode;
 
-use color::{Printer, build_spec};
-use util::{now_string, error_resp};
+use color::{build_spec, Printer};
+use util::{error_resp, now_string};
 
 lazy_static! {
     static ref C_BOLD_GREEN: Option<ColorSpec> = Some(build_spec(Some(Color::Green), true));
@@ -15,7 +14,9 @@ lazy_static! {
     static ref C_BOLD_RED: Option<ColorSpec> = Some(build_spec(Some(Color::Red), true));
 }
 
-pub struct RequestLogger { pub printer: Printer }
+pub struct RequestLogger {
+    pub printer: Printer,
+}
 
 impl RequestLogger {
     fn log(&self, req: &Request, resp: &Response) {
@@ -27,17 +28,26 @@ impl RequestLogger {
             } else {
                 C_BOLD_RED.deref()
             };
-            self.printer.println_out(
-                // datetime, remote-ip, status-code, method, url-path
-                "[{}] - {} - {} - {} {}",
-                &[
-                    (now_string().as_str(), &None),
-                    (req.remote_addr.ip().to_string().as_str(), &None),
-                    (status.to_u16().to_string().as_str(), status_color),
-                    (req.method.to_string().as_str(), &None),
-                    (percent_decode(req.url.as_ref().path().as_bytes())
-                     .decode_utf8().unwrap().to_string().as_str(), &None)
-                ]).unwrap();
+            self.printer
+                .println_out(
+                    // datetime, remote-ip, status-code, method, url-path
+                    "[{}] - {} - {} - {} {}",
+                    &[
+                        (now_string().as_str(), &None),
+                        (req.remote_addr.ip().to_string().as_str(), &None),
+                        (status.to_u16().to_string().as_str(), status_color),
+                        (req.method.to_string().as_str(), &None),
+                        (
+                            percent_decode(req.url.as_ref().path().as_bytes())
+                                .decode_utf8()
+                                .unwrap()
+                                .to_string()
+                                .as_str(),
+                            &None,
+                        ),
+                    ],
+                )
+                .unwrap();
         } else {
             println!("ERROR: StatusCode missing");
         }
@@ -57,7 +67,7 @@ impl AfterMiddleware for RequestLogger {
         } else {
             Ok(error_resp(
                 err.response.status.unwrap_or(status::InternalServerError),
-                err.error.description()
+                err.error.description(),
             ))
         }
     }

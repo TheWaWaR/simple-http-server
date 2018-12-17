@@ -2,54 +2,52 @@
 extern crate clap;
 #[macro_use]
 extern crate lazy_static;
-extern crate pretty_bytes;
-extern crate time;
 extern crate chrono;
-extern crate flate2;
+extern crate conduit_mime_types as mime_types;
 extern crate filetime;
-extern crate termcolor;
-extern crate url;
+extern crate flate2;
+extern crate htmlescape;
+extern crate hyper_native_tls;
 extern crate iron;
 extern crate iron_cors;
 extern crate multipart;
-extern crate hyper_native_tls;
-extern crate conduit_mime_types as mime_types;
-extern crate htmlescape;
+extern crate pretty_bytes;
+extern crate termcolor;
+extern crate time;
+extern crate url;
 
-mod util;
 mod color;
 mod middlewares;
+mod util;
 
-use std::env;
-use std::fs;
 use std::cmp::Ordering;
-use std::str::FromStr;
-use std::net::IpAddr;
-use std::io::{self, Read, Seek, SeekFrom};
-use std::path::{PathBuf, Path};
-use std::error::Error;
 use std::collections::BTreeMap;
+use std::env;
+use std::error::Error;
+use std::fs;
+use std::io::{self, Read, Seek, SeekFrom};
+use std::net::IpAddr;
+use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
+use htmlescape::encode_minimal;
 use iron::headers;
-use iron::status;
+use iron::headers::{AcceptEncoding, ContentEncoding, Encoding, QualityItem};
 use iron::method;
-use iron::headers::{ContentEncoding, Encoding, AcceptEncoding, QualityItem};
 use iron::modifiers::Redirect;
-use iron::{Iron, Request, Response, IronResult, IronError, Set, Chain, Handler};
+use iron::status;
+use iron::{Chain, Handler, Iron, IronError, IronResult, Request, Response, Set};
 use iron_cors::CorsMiddleware;
 use multipart::server::{Multipart, SaveResult};
 use pretty_bytes::converter::convert;
 use termcolor::{Color, ColorSpec};
-use url::percent_encoding::{percent_decode};
-use htmlescape::encode_minimal;
+use url::percent_encoding::percent_decode;
 
+use color::{build_spec, Printer};
 use util::{
-    ROOT_LINK,
-    StringError,
-    enable_string, now_string, error_resp,
-    system_time_to_date_time, encode_link_path, error_io2iron,
+    enable_string, encode_link_path, error_io2iron, error_resp, now_string,
+    system_time_to_date_time, StringError, ROOT_LINK,
 };
-use color::{Printer, build_spec};
 
 use middlewares::{AuthChecker, CompressionHandler, RequestLogger};
 
@@ -214,24 +212,17 @@ fn main() {
     let certpass = matches.value_of("certpass");
     let cors = matches.is_present("cors");
     let ip = matches.value_of("ip").unwrap();
-    let port = matches
-        .value_of("port")
-        .unwrap()
-        .parse::<u16>()
-        .unwrap();
+    let port = matches.value_of("port").unwrap().parse::<u16>().unwrap();
     let auth = matches.value_of("auth");
     let compress = matches.values_of_lossy("compress");
-    let threads = matches
-        .value_of("threads")
-        .unwrap()
-        .parse::<u8>()
-        .unwrap();
+    let threads = matches.value_of("threads").unwrap().parse::<u8>().unwrap();
     let try_file_404 = matches.value_of("try-file-404");
 
     let printer = Printer::new();
     let color_blue = Some(build_spec(Some(Color::Blue), false));
     let addr = format!("{}:{}", ip, port);
-    let compression_exts = compress.clone()
+    let compression_exts = compress
+        .clone()
         .unwrap_or_default()
         .iter()
         .map(|s| format!("*.{}", s))
@@ -243,7 +234,7 @@ fn main() {
     };
     let silent = matches.is_present("silent");
 
-    if ! silent {
+    if !silent {
         printer.println_out(
             r#"     Index: {}, Upload: {}, Cache: {}, Cors: {}, Range: {}, Sort: {}, Threads: {}
           Auth: {}, Compression: {}
@@ -275,15 +266,17 @@ fn main() {
         ).unwrap();
     }
 
-    let mut chain = Chain::new(MainHandler{
-        root, index, upload, cache, range, sort,
+    let mut chain = Chain::new(MainHandler {
+        root,
+        index,
+        upload,
+        cache,
+        range,
+        sort,
         compress: compress
             .clone()
-            .map(|exts| exts
-                 .iter()
-                 .map(|s| format!(".{}", s))
-                 .collect()),
-        try_file_404: try_file_404.map(PathBuf::from)
+            .map(|exts| exts.iter().map(|s| format!(".{}", s)).collect()),
+        try_file_404: try_file_404.map(PathBuf::from),
     });
     if cors {
         chain.link_around(CorsMiddleware::with_allow_any(true));
@@ -296,8 +289,10 @@ fn main() {
             chain.link_after(CompressionHandler);
         }
     }
-    if ! silent {
-        chain.link_after(RequestLogger{ printer: Printer::new() });
+    if !silent {
+        chain.link_after(RequestLogger {
+            printer: Printer::new(),
+        });
     }
     let mut server = Iron::new(chain);
     server.threads = threads as usize;
@@ -309,11 +304,16 @@ fn main() {
         server.http(&addr)
     };
     if let Err(e) = rv {
-        printer.println_err("{}: Can not bind on {}, {}", &[
-            ("ERROR", &Some(build_spec(Some(Color::Red), true))),
-            (addr.as_str(), &None),
-            (e.to_string().as_str(), &None)
-        ]).unwrap();
+        printer
+            .println_err(
+                "{}: Can not bind on {}, {}",
+                &[
+                    ("ERROR", &Some(build_spec(Some(Color::Red), true))),
+                    (addr.as_str(), &None),
+                    (e.to_string().as_str(), &None),
+                ],
+            )
+            .unwrap();
         std::process::exit(1);
     };
 }
@@ -326,18 +326,21 @@ struct MainHandler {
     range: bool,
     sort: bool,
     compress: Option<Vec<String>>,
-    try_file_404: Option<PathBuf>
+    try_file_404: Option<PathBuf>,
 }
 
 impl Handler for MainHandler {
     fn handle(&self, req: &mut Request) -> IronResult<Response> {
         let mut fs_path = self.root.clone();
-        let path_prefix = req.url.path()
+        let path_prefix = req
+            .url
+            .path()
             .into_iter()
             .filter(|s| !s.is_empty())
             .map(|s| {
                 percent_decode(s.as_bytes())
-                    .decode_utf8().unwrap()
+                    .decode_utf8()
+                    .unwrap()
                     .to_string()
             })
             .collect::<Vec<String>>();
@@ -349,7 +352,7 @@ impl Handler for MainHandler {
             if let Err((s, msg)) = self.save_files(req, &fs_path) {
                 return Ok(error_resp(s, &msg));
             } else {
-                return Ok(Response::with((status::Found, Redirect(req.url.clone()))))
+                return Ok(Response::with((status::Found, Redirect(req.url.clone()))));
             }
         }
 
@@ -360,16 +363,15 @@ impl Handler for MainHandler {
                     io::ErrorKind::PermissionDenied => status::Forbidden,
                     io::ErrorKind::NotFound => {
                         if let Some(ref p) = self.try_file_404 {
-                            if Some(true) == fs::metadata(p)
-                                .ok()
-                                .and_then(|meta| Some(meta.is_file()))
+                            if Some(true)
+                                == fs::metadata(p).ok().and_then(|meta| Some(meta.is_file()))
                             {
                                 return self.send_file(req, p);
                             }
                         }
                         status::NotFound
-                    },
-                    _ => status::InternalServerError
+                    }
+                    _ => status::InternalServerError,
                 };
                 return Err(IronError::new(err, status));
             }
@@ -384,8 +386,11 @@ impl Handler for MainHandler {
 }
 
 impl MainHandler {
-
-    fn save_files(&self, req: &mut Request, path: &PathBuf) -> Result<(), (status::Status, String)> {
+    fn save_files(
+        &self,
+        req: &mut Request,
+        path: &PathBuf,
+    ) -> Result<(), (status::Status, String)> {
         match Multipart::from_request(req) {
             Ok(mut multipart) => {
                 // Fetching all data and processing it.
@@ -398,29 +403,42 @@ impl MainHandler {
                                 let mut target_path = path.clone();
                                 target_path.push(file.filename.clone().unwrap());
                                 if let Err(errno) = fs::copy(file.path, target_path) {
-                                    return Err((status::InternalServerError, format!("Copy file failed: {}", errno)));
+                                    return Err((
+                                        status::InternalServerError,
+                                        format!("Copy file failed: {}", errno),
+                                    ));
                                 } else {
                                     println!("  >> File saved: {}", file.filename.clone().unwrap());
                                 }
                             }
                         }
                         Ok(())
-                    },
-                    SaveResult::Partial(_entries, reason) => {
-                        Err((status::InternalServerError, reason.unwrap_err().description().to_owned()))
                     }
-                    SaveResult::Error(error) => Err((status::InternalServerError, error.description().to_owned())),
+                    SaveResult::Partial(_entries, reason) => Err((
+                        status::InternalServerError,
+                        reason.unwrap_err().description().to_owned(),
+                    )),
+                    SaveResult::Error(error) => {
+                        Err((status::InternalServerError, error.description().to_owned()))
+                    }
                 }
             }
-            Err(_) => Err((status::BadRequest ,"The request is not multipart".to_owned()))
+            Err(_) => Err((
+                status::BadRequest,
+                "The request is not multipart".to_owned(),
+            )),
         }
     }
 
-    fn list_directory(&self, req: &mut Request, fs_path: &PathBuf, path_prefix: &[String]) -> IronResult<Response> {
-
+    fn list_directory(
+        &self,
+        req: &mut Request,
+        fs_path: &PathBuf,
+        path_prefix: &[String],
+    ) -> IronResult<Response> {
         struct Entry {
             filename: String,
-            metadata: fs::Metadata
+            metadata: fs::Metadata,
         }
 
         let mut resp = Response::with(status::Ok);
@@ -431,9 +449,9 @@ impl MainHandler {
         let mut entries = Vec::new();
         for entry_result in read_dir {
             let entry = try!(entry_result.map_err(error_io2iron));
-            entries.push(Entry{
+            entries.push(Entry {
                 filename: entry.file_name().into_string().unwrap(),
-                metadata: try!(entry.metadata().map_err(error_io2iron))
+                metadata: try!(entry.metadata().map_err(error_io2iron)),
             });
         }
 
@@ -445,14 +463,16 @@ impl MainHandler {
             while !breadcrumb.is_empty() {
                 bread_links.push(format!(
                     r#"<a href="/{link}/"><strong>{label}</strong></a>"#,
-                    link=encode_link_path(&breadcrumb),
-                    label=encode_minimal(&breadcrumb.pop().unwrap().to_owned()),
+                    link = encode_link_path(&breadcrumb),
+                    label = encode_minimal(&breadcrumb.pop().unwrap().to_owned()),
                 ));
             }
             bread_links.push(ROOT_LINK.to_owned());
             bread_links.reverse();
             bread_links.join(" / ")
-        } else { ROOT_LINK.to_owned() };
+        } else {
+            ROOT_LINK.to_owned()
+        };
 
         // Sort links
         let sort_links = if self.sort {
@@ -475,23 +495,31 @@ impl MainHandler {
             }
 
             if let Some(field) = sort_field {
-                if SORT_FIELDS.iter().position(|s| *s == field.as_str()).is_none() {
+                if SORT_FIELDS
+                    .iter()
+                    .position(|s| *s == field.as_str())
+                    .is_none()
+                {
                     return Err(IronError::new(
                         StringError(format!("Unknown sort field: {}", field)),
-                        status::BadRequest));
+                        status::BadRequest,
+                    ));
                 }
-                if vec![ORDER_ASC, ORDER_DESC].iter().position(|s| *s == order).is_none() {
+                if vec![ORDER_ASC, ORDER_DESC]
+                    .iter()
+                    .position(|s| *s == order)
+                    .is_none()
+                {
                     return Err(IronError::new(
                         StringError(format!("Unknown sort order: {}", order)),
-                        status::BadRequest));
+                        status::BadRequest,
+                    ));
                 }
 
                 let reverse = order == ORDER_DESC;
                 entries.sort_by(|a, b| {
                     let rv = match field.as_str() {
-                        "name" => {
-                            a.filename.cmp(&b.filename)
-                        }
+                        "name" => a.filename.cmp(&b.filename),
                         "modified" => {
                             let a = a.metadata.modified().unwrap();
                             let b = b.metadata.modified().unwrap();
@@ -499,7 +527,8 @@ impl MainHandler {
                         }
                         "size" => {
                             if a.metadata.is_dir() == b.metadata.is_dir()
-                                || a.metadata.is_file() == b.metadata.is_file() {
+                                || a.metadata.is_file() == b.metadata.is_file()
+                            {
                                 a.metadata.len().cmp(&b.metadata.len())
                             } else if a.metadata.is_dir() {
                                 Ordering::Less
@@ -507,15 +536,20 @@ impl MainHandler {
                                 Ordering::Greater
                             }
                         }
-                        _ => { unreachable!() }
+                        _ => unreachable!(),
                     };
-                    if reverse { rv.reverse() } else { rv }
+                    if reverse {
+                        rv.reverse()
+                    } else {
+                        rv
+                    }
                 });
             }
 
             let mut current_link = path_prefix.to_owned();
             current_link.push("".to_owned());
-            format!(r#"
+            format!(
+                r#"
 <tr>
   <th><a href="/{link}?sort=name&order={name_order}">Name</a></th>
   <th><a href="/{link}?sort=modified&order={modified_order}">Last modified</a></th>
@@ -523,12 +557,14 @@ impl MainHandler {
 </tr>
 <tr><td style="border-top:1px dashed #BBB;" colspan="5"></td></tr>
 "#,
-                    link=encode_link_path(&current_link),
-                    name_order=order_labels.get("name").unwrap_or(&DEFAULT_ORDER),
-                    modified_order=order_labels.get("modified").unwrap_or(&DEFAULT_ORDER),
-                    size_order=order_labels.get("size").unwrap_or(&DEFAULT_ORDER)
+                link = encode_link_path(&current_link),
+                name_order = order_labels.get("name").unwrap_or(&DEFAULT_ORDER),
+                modified_order = order_labels.get("modified").unwrap_or(&DEFAULT_ORDER),
+                size_order = order_labels.get("size").unwrap_or(&DEFAULT_ORDER)
             )
-        }  else { "".to_owned() };
+        } else {
+            "".to_owned()
+        };
 
         // Goto parent directory link
         if !path_prefix.is_empty() {
@@ -545,14 +581,14 @@ impl MainHandler {
   <td></td>
 </tr>
 "#,
-                link=encode_link_path(&link)
+                link = encode_link_path(&link)
             ));
         } else {
             rows.push(r#"<tr><td>&nbsp;</td></tr>"#.to_owned());
         }
 
         // Directory entries
-        for Entry{ filename, metadata } in entries {
+        for Entry { filename, metadata } in entries {
             if self.index {
                 for fname in &["index.html", "index.htm"] {
                     if filename == *fname {
@@ -564,7 +600,8 @@ impl MainHandler {
             }
             // * Entry.modified
             let file_modified = system_time_to_date_time(metadata.modified().unwrap())
-                .format("%Y-%m-%d %H:%M:%S").to_string();
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string();
             // * Entry.filesize
             let file_size = if metadata.is_dir() {
                 "-".to_owned()
@@ -586,7 +623,9 @@ impl MainHandler {
             // * Entry.label
             let file_name_label = if metadata.is_dir() {
                 format!("{}/", &filename)
-            } else { filename.clone() };
+            } else {
+                filename.clone()
+            };
 
             // Render one directory entry
             rows.push(format!(
@@ -597,11 +636,11 @@ impl MainHandler {
   <td><bold>{filesize}</bold></td>
 </tr>
 "#,
-                linkstyle=link_style,
-                link=encode_link_path(&link),
-                label=encode_minimal(&file_name_label),
-                modified=file_modified,
-                filesize=file_size
+                linkstyle = link_style,
+                link = encode_link_path(&link),
+                label = encode_minimal(&file_name_label),
+                modified = file_modified,
+                filesize = file_size
             ));
         }
 
@@ -615,7 +654,9 @@ impl MainHandler {
 </form>
 "#,
                 path=encode_link_path(path_prefix))
-        } else { "".to_owned() };
+        } else {
+            "".to_owned()
+        };
 
         // Put all parts together
         resp.set_mut(format!(
@@ -636,15 +677,16 @@ impl MainHandler {
 </body>
 </html>
 "#,
-            upload_form=upload_form,
-            breadcrumb=breadcrumb,
-            sort_links=sort_links,
-            rows=rows.join("\n")));
+            upload_form = upload_form,
+            breadcrumb = breadcrumb,
+            sort_links = sort_links,
+            rows = rows.join("\n")
+        ));
 
         resp.headers.set(headers::ContentType::html());
         if self.compress.is_some() {
             if let Some(&AcceptEncoding(ref encodings)) = req.headers.get::<AcceptEncoding>() {
-                for &QualityItem{ ref item, ..} in encodings {
+                for &QualityItem { ref item, .. } in encodings {
                     if *item == Encoding::Deflate || *item == Encoding::Gzip {
                         resp.headers.set(ContentEncoding(vec![item.clone()]));
                     }
@@ -655,22 +697,28 @@ impl MainHandler {
     }
 
     fn send_file<P: AsRef<Path>>(&self, req: &Request, path: P) -> IronResult<Response> {
-        use iron::headers::{IfModifiedSince, CacheControl, LastModified, CacheDirective, HttpDate};
-        use iron::headers::{ContentLength, ContentType, ETag, EntityTag,
-                            AcceptRanges, RangeUnit, Range, ByteRangeSpec, IfRange, IfMatch,
-                            ContentRange, ContentRangeSpec};
-        use iron::method::Method;
-        use iron::mime::{Mime, TopLevel, SubLevel};
         use filetime::FileTime;
+        use iron::headers::{
+            AcceptRanges, ByteRangeSpec, ContentLength, ContentRange, ContentRangeSpec,
+            ContentType, ETag, EntityTag, IfMatch, IfRange, Range, RangeUnit,
+        };
+        use iron::headers::{
+            CacheControl, CacheDirective, HttpDate, IfModifiedSince, LastModified,
+        };
+        use iron::method::Method;
+        use iron::mime::{Mime, SubLevel, TopLevel};
 
         let path = path.as_ref();
         let metadata = fs::metadata(path).map_err(error_io2iron)?;
 
         let time = FileTime::from_last_modification_time(&metadata);
         let modified = time::Timespec::new(time.seconds() as i64, 0);
-        let etag = EntityTag::weak(
-            format!("{0:x}-{1:x}.{2:x}", metadata.len(), modified.sec, modified.nsec)
-        );
+        let etag = EntityTag::weak(format!(
+            "{0:x}-{1:x}.{2:x}",
+            metadata.len(),
+            modified.sec,
+            modified.nsec
+        ));
 
         let mut resp = Response::with(status::Ok);
         if self.range {
@@ -678,13 +726,14 @@ impl MainHandler {
         }
         match req.method {
             Method::Head => {
-                let content_type = req.headers
+                let content_type = req
+                    .headers
                     .get::<ContentType>()
                     .cloned()
                     .unwrap_or_else(|| ContentType(Mime(TopLevel::Text, SubLevel::Plain, vec![])));
                 resp.headers.set(content_type);
                 resp.headers.set(ContentLength(metadata.len()));
-            },
+            }
             Method::Get => {
                 // Set mime type
                 let mime_str = MIME_TYPES.mime_for_path(path);
@@ -697,10 +746,14 @@ impl MainHandler {
                         // [Reference]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/If-Match
                         // Check header::If-Match
                         if let Some(&IfMatch::Items(ref items)) = req.headers.get::<IfMatch>() {
-                            if items.iter().position(|item| item.strong_eq(&etag)).is_none() {
+                            if items
+                                .iter()
+                                .position(|item| item.strong_eq(&etag))
+                                .is_none()
+                            {
                                 return Err(IronError::new(
                                     StringError("Etag not matched".to_owned()),
-                                    status::RangeNotSatisfiable
+                                    status::RangeNotSatisfiable,
                                 ));
                             }
                         };
@@ -709,8 +762,10 @@ impl MainHandler {
                     // [Reference]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/If-Range
                     let matched_ifrange = match req.headers.get::<IfRange>() {
                         Some(&IfRange::EntityTag(ref etag_ifrange)) => etag.weak_eq(etag_ifrange),
-                        Some(&IfRange::Date(HttpDate(ref date_ifrange))) => time::at(modified) <= *date_ifrange,
-                        None => true
+                        Some(&IfRange::Date(HttpDate(ref date_ifrange))) => {
+                            time::at(modified) <= *date_ifrange
+                        }
+                        None => true,
                     };
                     if !matched_ifrange {
                         range = None;
@@ -720,11 +775,15 @@ impl MainHandler {
                         Some(&Range::Bytes(ref ranges)) => {
                             if let Some(range) = ranges.get(0) {
                                 let (offset, length) = match *range {
-                                    ByteRangeSpec::FromTo(x, mut y) => { // "x-y"
+                                    ByteRangeSpec::FromTo(x, mut y) => {
+                                        // "x-y"
                                         if x >= metadata.len() || x > y {
                                             return Err(IronError::new(
-                                                StringError(format!("Invalid range(x={}, y={})", x, y)),
-                                                status::RangeNotSatisfiable
+                                                StringError(format!(
+                                                    "Invalid range(x={}, y={})",
+                                                    x, y
+                                                )),
+                                                status::RangeNotSatisfiable,
                                             ));
                                         }
                                         if y >= metadata.len() {
@@ -732,7 +791,8 @@ impl MainHandler {
                                         }
                                         (x, y - x + 1)
                                     }
-                                    ByteRangeSpec::AllFrom(x) => { // "x-"
+                                    ByteRangeSpec::AllFrom(x) => {
+                                        // "x-"
                                         if x >= metadata.len() {
                                             return Err(IronError::new(
                                                 StringError(format!(
@@ -743,7 +803,8 @@ impl MainHandler {
                                         }
                                         (x, metadata.len() - x)
                                     }
-                                    ByteRangeSpec::Last(mut x) => { // "-x"
+                                    ByteRangeSpec::Last(mut x) => {
+                                        // "-x"
                                         if x > metadata.len() {
                                             x = metadata.len();
                                         }
@@ -755,23 +816,23 @@ impl MainHandler {
                                 let take = file.take(length);
 
                                 resp.headers.set(ContentLength(length));
-                                resp.headers.set(ContentRange(ContentRangeSpec::Bytes{
+                                resp.headers.set(ContentRange(ContentRangeSpec::Bytes {
                                     range: Some((offset, offset + length - 1)),
-                                    instance_length: Some(metadata.len())
+                                    instance_length: Some(metadata.len()),
                                 }));
                                 resp.body = Some(Box::new(Box::new(take) as Box<Read + Send>));
                                 resp.set_mut(status::PartialContent);
                             } else {
                                 return Err(IronError::new(
                                     StringError("Empty range set".to_owned()),
-                                    status::RangeNotSatisfiable
+                                    status::RangeNotSatisfiable,
                                 ));
                             }
                         }
                         Some(_) => {
                             return Err(IronError::new(
                                 StringError("Invalid range type".to_owned()),
-                                status::RangeNotSatisfiable
+                                status::RangeNotSatisfiable,
                             ));
                         }
                         _ => {
@@ -793,10 +854,11 @@ impl MainHandler {
 
         if let Some(ref exts) = self.compress {
             let path_str = path.to_string_lossy();
-            if resp.status != Some(status::PartialContent) &&
-                exts.iter().any(|ext| path_str.ends_with(ext)) {
+            if resp.status != Some(status::PartialContent)
+                && exts.iter().any(|ext| path_str.ends_with(ext))
+            {
                 if let Some(&AcceptEncoding(ref encodings)) = req.headers.get::<AcceptEncoding>() {
-                    for &QualityItem{ ref item, ..} in encodings {
+                    for &QualityItem { ref item, .. } in encodings {
                         if *item == Encoding::Deflate || *item == Encoding::Gzip {
                             resp.headers.set(ContentEncoding(vec![item.clone()]));
                             break;
@@ -808,9 +870,11 @@ impl MainHandler {
 
         if self.cache {
             static SECONDS: u32 = 7 * 24 * 3600; // max-age: 7.days()
-            if let Some(&IfModifiedSince(HttpDate(ref if_modified_since))) = req.headers.get::<IfModifiedSince>() {
+            if let Some(&IfModifiedSince(HttpDate(ref if_modified_since))) =
+                req.headers.get::<IfModifiedSince>()
+            {
                 if modified <= if_modified_since.to_timespec() {
-                    return Ok(Response::with(status::NotModified))
+                    return Ok(Response::with(status::NotModified));
                 }
             };
             let cache = vec![CacheDirective::Public, CacheDirective::MaxAge(SECONDS)];

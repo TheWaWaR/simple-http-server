@@ -1,14 +1,13 @@
-
-use std::io;
-use std::fmt;
 use std::error::Error;
+use std::fmt;
+use std::io;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use iron::status;
+use chrono::{DateTime, Local, TimeZone};
 use iron::headers;
+use iron::status;
 use iron::{IronError, Response};
 use url::percent_encoding::{utf8_percent_encode, PATH_SEGMENT_ENCODE_SET};
-use chrono::{DateTime, Local, TimeZone};
 
 pub const ROOT_LINK: &str = r#"<a href="/"><strong>[Root]</strong></a>"#;
 
@@ -32,16 +31,17 @@ pub fn enable_string(value: bool) -> String {
 }
 
 pub fn encode_link_path(path: &[String]) -> String {
-    path.iter().map(|s| {
-        utf8_percent_encode(s, PATH_SEGMENT_ENCODE_SET).to_string()
-    }).collect::<Vec<String>>().join("/")
+    path.iter()
+        .map(|s| utf8_percent_encode(s, PATH_SEGMENT_ENCODE_SET).to_string())
+        .collect::<Vec<String>>()
+        .join("/")
 }
 
 pub fn error_io2iron(err: io::Error) -> IronError {
     let status = match err.kind() {
         io::ErrorKind::PermissionDenied => status::Forbidden,
         io::ErrorKind::NotFound => status::NotFound,
-        _ => status::InternalServerError
+        _ => status::InternalServerError,
     };
     IronError::new(err, status)
 }
@@ -102,7 +102,8 @@ pub fn now_string() -> String {
 pub fn system_time_to_date_time(t: SystemTime) -> DateTime<Local> {
     let (sec, nsec) = match t.duration_since(UNIX_EPOCH) {
         Ok(dur) => (dur.as_secs() as i64, dur.subsec_nanos()),
-        Err(e) => { // unlikely but should be handled
+        Err(e) => {
+            // unlikely but should be handled
             let dur = e.duration();
             let (sec, nsec) = (dur.as_secs() as i64, dur.subsec_nanos());
             if nsec == 0 {
@@ -110,14 +111,16 @@ pub fn system_time_to_date_time(t: SystemTime) -> DateTime<Local> {
             } else {
                 (-sec - 1, 1_000_000_000 - nsec)
             }
-        },
+        }
     };
     Local.timestamp(sec, nsec)
 }
 
 pub fn error_resp(s: status::Status, msg: &str) -> Response {
-    let mut resp = Response::with((s, format!(
-        r#"<!DOCTYPE html>
+    let mut resp = Response::with((
+        s,
+        format!(
+            r#"<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
@@ -129,11 +132,11 @@ pub fn error_resp(s: status::Status, msg: &str) -> Response {
 </body>
 </html>
 "#,
-        root_link=ROOT_LINK,
-        code=s.to_u16(),
-        msg=msg
-    )));
+            root_link = ROOT_LINK,
+            code = s.to_u16(),
+            msg = msg
+        ),
+    ));
     resp.headers.set(headers::ContentType::html());
     resp
 }
-
