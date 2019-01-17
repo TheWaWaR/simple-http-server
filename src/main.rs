@@ -279,7 +279,7 @@ fn main() {
         try_file_404: try_file_404.map(PathBuf::from),
     });
     if cors {
-        chain.link_around(CorsMiddleware::with_allow_any(true));
+        chain.link_around(CorsMiddleware::with_allow_any());
     }
     if let Some(auth) = auth {
         chain.link_before(AuthChecker::new(auth));
@@ -398,17 +398,25 @@ impl MainHandler {
                 // in a new temporary directory under the OS temporary directory.
                 match multipart.save().temp() {
                     SaveResult::Full(entries) => {
-                        for (_, files) in entries.files {
-                            for file in files {
+                        for (_, fields) in entries.fields {
+                            for field in fields {
+                                let mut data = field.data.readable().unwrap();
+                                let headers = &field.headers;
                                 let mut target_path = path.clone();
-                                target_path.push(file.filename.clone().unwrap());
-                                if let Err(errno) = fs::copy(file.path, target_path) {
+
+                                target_path.push(headers.filename.clone().unwrap());
+                                if let Err(errno) = std::fs::File::create(target_path)
+                                    .and_then(|mut file| io::copy(&mut data, &mut file))
+                                {
                                     return Err((
                                         status::InternalServerError,
                                         format!("Copy file failed: {}", errno),
                                     ));
                                 } else {
-                                    println!("  >> File saved: {}", file.filename.clone().unwrap());
+                                    println!(
+                                        "  >> File saved: {}",
+                                        headers.filename.clone().unwrap()
+                                    );
                                 }
                             }
                         }

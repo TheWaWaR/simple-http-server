@@ -18,10 +18,10 @@ flate2 = "0.2.19"
 filetime = "0.1.10"
 pretty-bytes = "0.2.1"
 url = "^1.4.0"
-hyper-native-tls = "0.2.2"
+hyper-native-tls = "0.3.0"
 conduit-mime-types = "0.7.3"
 # Iron crates
-iron = "^0.5.0"
-iron-cors = "^0.5.0"
-multipart = { version="0.12.0", features=["iron"] }
+iron = "^0.6.0"
+iron-cors = "^0.8.0"
+multipart = { version="0.15.4", features=["iron"] }
 htmlescape = "0.3.1"
