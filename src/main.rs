@@ -3,7 +3,7 @@ extern crate clap;
 #[macro_use]
 extern crate lazy_static;
 extern crate chrono;
-extern crate conduit_mime_types as mime_types;
+extern crate mime_guess as mime_types;
 extern crate filetime;
 extern crate flate2;
 extern crate htmlescape;
@@ -56,7 +56,6 @@ const ORDER_DESC: &str = "desc";
 const DEFAULT_ORDER: &str = ORDER_DESC;
 
 lazy_static! {
-    static ref MIME_TYPES: mime_types::Types = mime_types::Types::new().unwrap();
     static ref SORT_FIELDS: Vec<&'static str> = vec!["name", "modified", "size"];
 }
 
@@ -744,8 +743,8 @@ impl MainHandler {
             }
             Method::Get => {
                 // Set mime type
-                let mime_str = MIME_TYPES.mime_for_path(path);
-                let _ = mime_str.parse().map(|mime: Mime| resp.set_mut(mime));
+                let mime = mime_types::guess_mime_type(path);
+                resp.set_mut(mime);
 
                 if self.range {
                     let mut range = req.headers.get::<Range>();
