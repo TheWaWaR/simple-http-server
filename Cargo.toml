@@ -7,6 +7,7 @@ description = "Simple HTTP server"
 readme = "README.md"
 keywords = ["simple", "http", "server", "static", "file"]
 repository = "https://github.com/TheWaWaR/simple-http-server"
+edition = "2018"
 
 [dependencies]
 clap = "2.24.2"

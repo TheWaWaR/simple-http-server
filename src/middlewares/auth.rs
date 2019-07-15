@@ -1,7 +1,7 @@
 use iron::status;
 use iron::{BeforeMiddleware, IronError, IronResult, Request, Response};
 
-use util::StringError;
+use crate::util::StringError;
 
 pub struct AuthChecker {
     username: String,
