@@ -3,13 +3,13 @@ extern crate clap;
 #[macro_use]
 extern crate lazy_static;
 extern crate chrono;
-extern crate mime_guess as mime_types;
 extern crate filetime;
 extern crate flate2;
 extern crate htmlescape;
 extern crate hyper_native_tls;
 extern crate iron;
 extern crate iron_cors;
+extern crate mime_guess as mime_types;
 extern crate multipart;
 extern crate pretty_bytes;
 extern crate termcolor;
@@ -208,7 +208,10 @@ fn main() {
         .unwrap_or_else(|| env::current_dir().unwrap());
     let index = matches.is_present("index");
     let upload = matches.is_present("upload");
-    let redirect_to = matches.value_of("redirect").map(iron::Url::parse).map(Result::unwrap);
+    let redirect_to = matches
+        .value_of("redirect")
+        .map(iron::Url::parse)
+        .map(Result::unwrap);
     let sort = !matches.is_present("nosort");
     let cache = !matches.is_present("nocache");
     let range = !matches.is_present("norange");
@@ -339,7 +342,10 @@ impl Handler for MainHandler {
     fn handle(&self, req: &mut Request) -> IronResult<Response> {
         let mut fs_path = self.root.clone();
         if let Some(url) = &self.redirect_to {
-          return Ok(Response::with((status::PermanentRedirect, Redirect(url.clone()))));
+            return Ok(Response::with((
+                status::PermanentRedirect,
+                Redirect(url.clone()),
+            )));
         }
         let path_prefix = req
             .url
