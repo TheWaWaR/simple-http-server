@@ -30,7 +30,7 @@ OPTIONS:
                                         Note: disabled on partial request!
         --ip <ip>                   IP address to bind [default: 0.0.0.0]
     -p, --port <port>               Port number [default: 8000]
-        --redirect <redirect>       takes a URL to redirect to using the http 301
+        --redirect <redirect>       takes a URL to redirect to using HTTP 301 Moved Permanently
     -t, --threads <threads>         How many worker threads [default: 3]
         --try-file <PATH>           serve this file (server root relative) in place of missing files (useful for single
                                     page apps) [aliases: try-file-404]

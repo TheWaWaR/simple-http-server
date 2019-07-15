@@ -72,7 +72,7 @@ fn main() {
         .arg(clap::Arg::with_name("redirect").long("redirect")
              .takes_value(true)
              .validator(|url_string| iron::Url::parse(url_string.as_str()).map(|_| ()))
-             .help("takes a URL to redirect to using the http 301"))
+             .help("takes a URL to redirect to using HTTP 301 Moved Permanently"))
         .arg(clap::Arg::with_name("nosort")
              .long("nosort")
              .help("Disable directory entries sort (by: name, modified, size)"))
