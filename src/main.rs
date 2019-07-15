@@ -3,13 +3,13 @@ extern crate clap;
 #[macro_use]
 extern crate lazy_static;
 extern crate chrono;
-extern crate mime_guess as mime_types;
 extern crate filetime;
 extern crate flate2;
 extern crate htmlescape;
 extern crate hyper_native_tls;
 extern crate iron;
 extern crate iron_cors;
+extern crate mime_guess as mime_types;
 extern crate multipart;
 extern crate pretty_bytes;
 extern crate termcolor;
@@ -84,6 +84,10 @@ fn main() {
              .short("u")
              .long("upload")
              .help("Enable upload files (multiple select)"))
+        .arg(clap::Arg::with_name("redirect").long("redirect")
+             .takes_value(true)
+             .validator(|url_string| iron::Url::parse(url_string.as_str()).map(|_| ()))
+             .help("takes a URL to redirect to using the http 301"))
         .arg(clap::Arg::with_name("nosort")
              .long("nosort")
              .help("Disable directory entries sort (by: name, modified, size)"))
@@ -204,6 +208,10 @@ fn main() {
         .unwrap_or_else(|| env::current_dir().unwrap());
     let index = matches.is_present("index");
     let upload = matches.is_present("upload");
+    let redirect_to = matches
+        .value_of("redirect")
+        .map(iron::Url::parse)
+        .map(Result::unwrap);
     let sort = !matches.is_present("nosort");
     let cache = !matches.is_present("nocache");
     let range = !matches.is_present("norange");
@@ -271,6 +279,7 @@ fn main() {
         upload,
         cache,
         range,
+        redirect_to,
         sort,
         compress: compress
             .clone()
@@ -323,6 +332,7 @@ struct MainHandler {
     upload: bool,
     cache: bool,
     range: bool,
+    redirect_to: Option<iron::Url>,
     sort: bool,
     compress: Option<Vec<String>>,
     try_file_404: Option<PathBuf>,
@@ -331,6 +341,12 @@ struct MainHandler {
 impl Handler for MainHandler {
     fn handle(&self, req: &mut Request) -> IronResult<Response> {
         let mut fs_path = self.root.clone();
+        if let Some(url) = &self.redirect_to {
+            return Ok(Response::with((
+                status::PermanentRedirect,
+                Redirect(url.clone()),
+            )));
+        }
         let path_prefix = req
             .url
             .path()
