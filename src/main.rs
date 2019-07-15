@@ -12,6 +12,7 @@ use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
+use clap::crate_version;
 use htmlescape::encode_minimal;
 use iron::headers;
 use iron::headers::{AcceptEncoding, ContentEncoding, Encoding, QualityItem};
@@ -20,13 +21,12 @@ use iron::modifiers::Redirect;
 use iron::status;
 use iron::{Chain, Handler, Iron, IronError, IronResult, Request, Response, Set};
 use iron_cors::CorsMiddleware;
+use lazy_static::lazy_static;
+use mime_guess as mime_types;
 use multipart::server::{Multipart, SaveResult};
 use pretty_bytes::converter::convert;
 use termcolor::{Color, ColorSpec};
 use url::percent_encoding::percent_decode;
-use lazy_static::lazy_static;
-use clap::crate_version;
-use mime_guess as mime_types;
 
 use color::{build_spec, Printer};
 use util::{

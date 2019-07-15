@@ -2,9 +2,9 @@ use std::ops::Deref;
 
 use iron::status;
 use iron::{AfterMiddleware, IronError, IronResult, Request, Response};
+use lazy_static::lazy_static;
 use termcolor::{Color, ColorSpec};
 use url::percent_encoding::percent_decode;
-use lazy_static::lazy_static;
 
 use crate::color::{build_spec, Printer};
 use crate::util::{error_resp, now_string};
