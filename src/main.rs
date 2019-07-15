@@ -1,21 +1,3 @@
-#[macro_use]
-extern crate clap;
-#[macro_use]
-extern crate lazy_static;
-extern crate chrono;
-extern crate filetime;
-extern crate flate2;
-extern crate htmlescape;
-extern crate hyper_native_tls;
-extern crate iron;
-extern crate iron_cors;
-extern crate mime_guess as mime_types;
-extern crate multipart;
-extern crate pretty_bytes;
-extern crate termcolor;
-extern crate time;
-extern crate url;
-
 mod color;
 mod middlewares;
 mod util;
@@ -30,6 +12,7 @@ use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
+use clap::crate_version;
 use htmlescape::encode_minimal;
 use iron::headers;
 use iron::headers::{AcceptEncoding, ContentEncoding, Encoding, QualityItem};
@@ -38,6 +21,8 @@ use iron::modifiers::Redirect;
 use iron::status;
 use iron::{Chain, Handler, Iron, IronError, IronResult, Request, Response, Set};
 use iron_cors::CorsMiddleware;
+use lazy_static::lazy_static;
+use mime_guess as mime_types;
 use multipart::server::{Multipart, SaveResult};
 use pretty_bytes::converter::convert;
 use termcolor::{Color, ColorSpec};
@@ -468,13 +453,13 @@ impl MainHandler {
         let mut fs_path = fs_path.clone();
         let mut rows = Vec::new();
 
-        let read_dir = try!(fs::read_dir(&fs_path).map_err(error_io2iron));
+        let read_dir = fs::read_dir(&fs_path).map_err(error_io2iron)?;
         let mut entries = Vec::new();
         for entry_result in read_dir {
-            let entry = try!(entry_result.map_err(error_io2iron));
+            let entry = entry_result.map_err(error_io2iron)?;
             entries.push(Entry {
                 filename: entry.file_name().into_string().unwrap(),
-                metadata: try!(entry.metadata().map_err(error_io2iron)),
+                metadata: entry.metadata().map_err(error_io2iron)?,
             });
         }
 
@@ -860,13 +845,13 @@ impl MainHandler {
                         }
                         _ => {
                             resp.headers.set(ContentLength(metadata.len()));
-                            let file = try!(fs::File::open(path).map_err(error_io2iron));
+                            let file = fs::File::open(path).map_err(error_io2iron)?;
                             resp.body = Some(Box::new(file));
                         }
                     }
                 } else {
                     resp.headers.set(ContentLength(metadata.len()));
-                    let file = try!(fs::File::open(path).map_err(error_io2iron));
+                    let file = fs::File::open(path).map_err(error_io2iron)?;
                     resp.body = Some(Box::new(file));
                 }
             }

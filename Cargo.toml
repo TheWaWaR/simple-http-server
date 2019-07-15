@@ -7,15 +7,16 @@ description = "Simple HTTP server"
 readme = "README.md"
 keywords = ["simple", "http", "server", "static", "file"]
 repository = "https://github.com/TheWaWaR/simple-http-server"
+edition = "2018"
 
 [dependencies]
 clap = "2.24.2"
-termcolor = "0.3.2"
-lazy_static = "0.2.8"
+termcolor = "1.0.5"
+lazy_static = "1.3.0"
 time = "0.1.37"
 chrono = "0.4.0"
 flate2 = "0.2.19"
-filetime = "0.1.10"
+filetime = "0.2.6"
 pretty-bytes = "0.2.1"
 url = "^1.4.0"
 hyper-native-tls = "0.3.0"
@@ -23,5 +24,5 @@ mime_guess = "1.8.6"
 # Iron crates
 iron = "^0.6.0"
 iron-cors = "^0.8.0"
-multipart = { version="0.15.4", features=["iron"] }
+multipart = { version="0.16.1", features=["iron"] }
 htmlescape = "0.3.1"

@@ -2,11 +2,12 @@ use std::ops::Deref;
 
 use iron::status;
 use iron::{AfterMiddleware, IronError, IronResult, Request, Response};
+use lazy_static::lazy_static;
 use termcolor::{Color, ColorSpec};
 use url::percent_encoding::percent_decode;
 
-use color::{build_spec, Printer};
-use util::{error_resp, now_string};
+use crate::color::{build_spec, Printer};
+use crate::util::{error_resp, now_string};
 
 lazy_static! {
     static ref C_BOLD_GREEN: Option<ColorSpec> = Some(build_spec(Some(Color::Green), true));

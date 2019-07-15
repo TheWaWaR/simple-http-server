@@ -2,7 +2,7 @@ use std::io::Write;
 
 use termcolor::{BufferWriter, Color, ColorChoice, ColorSpec, WriteColor};
 
-use util::StringError;
+use crate::util::StringError;
 
 pub struct Printer {
     outwriter: BufferWriter,
