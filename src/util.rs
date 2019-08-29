@@ -7,7 +7,15 @@ use chrono::{DateTime, Local, TimeZone};
 use iron::headers;
 use iron::status;
 use iron::{IronError, Response};
-use url::percent_encoding::{utf8_percent_encode, PATH_SEGMENT_ENCODE_SET};
+use percent_encoding::{utf8_percent_encode, AsciiSet};
+
+/// https://url.spec.whatwg.org/#fragment-percent-encode-set
+const FRAGMENT_ENCODE_SET: &AsciiSet = &percent_encoding::CONTROLS
+    .add(b' ').add(b'"').add(b'<').add(b'>').add(b'`');
+/// https://url.spec.whatwg.org/#path-percent-encode-set
+const PATH_ENCODE_SET: &AsciiSet = &FRAGMENT_ENCODE_SET
+    .add(b'#').add(b'?').add(b'{').add(b'}');
+const PATH_SEGMENT_ENCODE_SET: &AsciiSet = &PATH_ENCODE_SET.add(b'/').add(b'%');
 
 pub const ROOT_LINK: &str = r#"<a href="/"><strong>[Root]</strong></a>"#;
 

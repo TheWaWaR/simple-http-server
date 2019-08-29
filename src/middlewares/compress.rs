@@ -1,25 +1,25 @@
 use std::io;
 
-use flate2::{Compression, FlateWriteExt};
+use flate2::{Compression, write::{DeflateEncoder, GzEncoder}};
 use iron::headers::{ContentEncoding, ContentLength, Encoding, TransferEncoding};
 use iron::response::WriteBody;
 use iron::{AfterMiddleware, IronResult, Request, Response};
 
 // [Reference]: https://github.com/iron/iron/issues/548
-struct GzipBody(Box<WriteBody>);
-struct DeflateBody(Box<WriteBody>);
+struct GzipBody(Box<dyn WriteBody>);
+struct DeflateBody(Box<dyn WriteBody>);
 
 impl WriteBody for GzipBody {
-    fn write_body(&mut self, w: &mut io::Write) -> io::Result<()> {
-        let mut w = w.gz_encode(Compression::Default);
+    fn write_body(&mut self, w: &mut dyn io::Write) -> io::Result<()> {
+        let mut w = GzEncoder::new(w, Compression::default());
         self.0.write_body(&mut w)?;
         w.finish().map(|_| ())
     }
 }
 
 impl WriteBody for DeflateBody {
-    fn write_body(&mut self, w: &mut io::Write) -> io::Result<()> {
-        let mut w = w.deflate_encode(Compression::Default);
+    fn write_body(&mut self, w: &mut dyn io::Write) -> io::Result<()> {
+        let mut w = DeflateEncoder::new(w, Compression::default());
         self.0.write_body(&mut w)?;
         w.finish().map(|_| ())
     }
