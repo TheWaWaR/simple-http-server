@@ -24,6 +24,7 @@ use iron_cors::CorsMiddleware;
 use lazy_static::lazy_static;
 use mime_guess as mime_types;
 use multipart::server::{Multipart, SaveResult};
+use path_dedot::*;
 use percent_encoding::percent_decode;
 use pretty_bytes::converter::convert;
 use termcolor::{Color, ColorSpec};
@@ -189,7 +190,7 @@ fn main() {
 
     let root = matches
         .value_of("root")
-        .map(PathBuf::from)
+        .map(|s| PathBuf::from(s).canonicalize().unwrap())
         .unwrap_or_else(|| env::current_dir().unwrap());
     let index = matches.is_present("index");
     let upload = matches.is_present("upload");
@@ -337,15 +338,16 @@ impl Handler for MainHandler {
             .path()
             .into_iter()
             .filter(|s| !s.is_empty())
-            .map(|s| {
-                percent_decode(s.as_bytes())
-                    .decode_utf8()
-                    .unwrap()
-                    .to_string()
-            })
-            .collect::<Vec<String>>();
-        for part in &path_prefix {
-            fs_path.push(part);
+            .map(|s| PathBuf::from(&*percent_decode(s.as_bytes()).decode_utf8().unwrap()))
+            .collect::<PathBuf>();
+        fs_path.push(&path_prefix);
+        let fs_path = dbg!(fs_path.parse_dot().unwrap());
+
+        if !fs_path.starts_with(&self.root) {
+            return Err(IronError::new(
+                io::Error::new(io::ErrorKind::PermissionDenied, "Permission Denied"),
+                status::Forbidden,
+            ));
         }
 
         if self.upload && req.method == method::Post {
@@ -376,6 +378,10 @@ impl Handler for MainHandler {
         };
 
         if path_metadata.is_dir() {
+            let path_prefix: Vec<String> = path_prefix
+                .iter()
+                .map(|s| s.to_string_lossy().to_string())
+                .collect();
             self.list_directory(req, &fs_path, &path_prefix)
         } else {
             self.send_file(req, &fs_path)
