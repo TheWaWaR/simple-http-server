@@ -24,7 +24,7 @@ use iron_cors::CorsMiddleware;
 use lazy_static::lazy_static;
 use mime_guess as mime_types;
 use multipart::server::{Multipart, SaveResult};
-use path_dedot::*;
+use path_dedot::ParseDot;
 use percent_encoding::percent_decode;
 use pretty_bytes::converter::convert;
 use termcolor::{Color, ColorSpec};
@@ -341,7 +341,7 @@ impl Handler for MainHandler {
             .map(|s| PathBuf::from(&*percent_decode(s.as_bytes()).decode_utf8().unwrap()))
             .collect::<PathBuf>();
         fs_path.push(&path_prefix);
-        let fs_path = dbg!(fs_path.parse_dot().unwrap());
+        let fs_path = fs_path.parse_dot().unwrap();
 
         if !fs_path.starts_with(&self.root) {
             return Err(IronError::new(
