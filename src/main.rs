@@ -26,7 +26,7 @@ use mime_guess as mime_types;
 use multipart::server::{Multipart, SaveResult};
 use pretty_bytes::converter::convert;
 use termcolor::{Color, ColorSpec};
-use url::percent_encoding::percent_decode;
+use percent_encoding::percent_decode;
 
 use color::{build_spec, Printer};
 use util::{
@@ -364,7 +364,7 @@ impl Handler for MainHandler {
                     io::ErrorKind::NotFound => {
                         if let Some(ref p) = self.try_file_404 {
                             if Some(true)
-                                == fs::metadata(p).ok().and_then(|meta| Some(meta.is_file()))
+                                == fs::metadata(p).ok().map(|meta| meta.is_file())
                             {
                                 return self.send_file(req, p);
                             }
@@ -828,7 +828,7 @@ impl MainHandler {
                                     range: Some((offset, offset + length - 1)),
                                     instance_length: Some(metadata.len()),
                                 }));
-                                resp.body = Some(Box::new(Box::new(take) as Box<Read + Send>));
+                                resp.body = Some(Box::new(Box::new(take) as Box<dyn Read + Send>));
                                 resp.set_mut(status::PartialContent);
                             } else {
                                 return Err(IronError::new(
