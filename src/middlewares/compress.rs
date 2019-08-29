@@ -1,6 +1,9 @@
 use std::io;
 
-use flate2::{Compression, write::{DeflateEncoder, GzEncoder}};
+use flate2::{
+    write::{DeflateEncoder, GzEncoder},
+    Compression,
+};
 use iron::headers::{ContentEncoding, ContentLength, Encoding, TransferEncoding};
 use iron::response::WriteBody;
 use iron::{AfterMiddleware, IronResult, Request, Response};

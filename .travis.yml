@@ -1,0 +1,31 @@
+language: rust
+rust:
+  - stable
+before_script:
+  - rustup component add rustfmt
+  - rustup component add clippy
+script:
+  - cargo build --all
+stages:
+  - Check
+  - Clippy
+  - Example
+  - Test
+jobs:
+  include:
+    - stage: Check
+      name: Format
+      script:
+        - make fmt
+    - stage: Clippy
+      name: Clippy
+      script:
+        - make clippy
+    - stage: Example
+      name: Example
+      script:
+        - make example
+    - stage: Test
+      name: Unitest
+      script:
+        - make test
