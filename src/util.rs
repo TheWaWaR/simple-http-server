@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::fmt;
 use std::io;
+use std::ops::Deref;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::{DateTime, Local, TimeZone};
@@ -34,6 +35,14 @@ impl fmt::Display for StringError {
 impl Error for StringError {
     fn description(&self) -> &str {
         &self.0
+    }
+}
+
+impl Deref for StringError {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &*self.0
     }
 }
 

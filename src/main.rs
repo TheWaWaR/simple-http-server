@@ -213,6 +213,7 @@ fn main() {
 
     let printer = Printer::new();
     let color_blue = Some(build_spec(Some(Color::Blue), false));
+    let color_red = Some(build_spec(Some(Color::Red), false));
     let addr = format!("{}:{}", ip, port);
     let compression_exts = compress
         .clone()
@@ -276,7 +277,15 @@ fn main() {
         chain.link_around(CorsMiddleware::with_allow_any());
     }
     if let Some(auth) = auth {
-        chain.link_before(AuthChecker::new(auth));
+        match AuthChecker::new(auth) {
+            Ok(auth_checker) => {
+                chain.link_before(auth_checker);
+            }
+            Err(e) => {
+                printer.print_err("{}", &[(&*e, &color_red)]).unwrap();
+                return;
+            }
+        }
     }
     if let Some(ref exts) = compress {
         if !exts.is_empty() {
