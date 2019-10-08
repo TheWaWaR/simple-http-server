@@ -9,11 +9,15 @@ pub struct AuthChecker {
 }
 
 impl AuthChecker {
-    pub fn new(s: &str) -> AuthChecker {
+    pub fn new(s: &str) -> Result<AuthChecker, StringError> {
         let parts = s.splitn(2, ':').collect::<Vec<&str>>();
-        AuthChecker {
-            username: parts[0].to_owned(),
-            password: parts[1].to_owned(),
+        if parts.len() == 2 {
+            Ok(AuthChecker {
+                username: parts[0].to_owned(),
+                password: parts[1].to_owned(),
+            })
+        } else {
+            Err(StringError("not valid format user & password".to_owned()))
         }
     }
 }
