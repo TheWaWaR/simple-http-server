@@ -288,7 +288,7 @@ fn main() {
             .clone()
             .map(|exts| exts.iter().map(|s| format!(".{}", s)).collect()),
         try_file_404: try_file_404.map(PathBuf::from),
-        upload_size_limit: upload_size_limit,
+        upload_size_limit,
     });
     if cors {
         chain.link_around(CorsMiddleware::with_allow_any());
