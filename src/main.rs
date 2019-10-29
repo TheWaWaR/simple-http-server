@@ -217,7 +217,11 @@ fn main() {
     let cors = matches.is_present("cors");
     let ip = matches.value_of("ip").unwrap();
     let port = matches.value_of("port").unwrap().parse::<u16>().unwrap();
-    let upload_size_limit = matches.value_of("upload_size_limit").unwrap().parse::<u64>().unwrap();
+    let upload_size_limit = matches
+        .value_of("upload_size_limit")
+        .unwrap()
+        .parse::<u64>()
+        .unwrap();
     let auth = matches.value_of("auth");
     let compress = matches.values_of_lossy("compress");
     let threads = matches.value_of("threads").unwrap().parse::<u8>().unwrap();
