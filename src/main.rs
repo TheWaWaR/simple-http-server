@@ -106,7 +106,7 @@ fn main() {
              .help("TLS/SSL certificate password"))
         .arg(clap::Arg::with_name("upload_size_limit")
              .short("l")
-             .long("upload_size_limit")
+             .long("upload-size-limit")
              .takes_value(true)
              .default_value("8000000")
              .validator(|s| {
@@ -114,7 +114,7 @@ fn main() {
                      Ok(_) => Ok(()),
                      Err(e) => Err(e.description().to_string())
                  }})
-             .help("Upload file size limit (default 8 Mb)"))
+             .help("Upload file size limit [bytes]"))
         .arg(clap::Arg::with_name("ip")
              .long("ip")
              .takes_value(true)

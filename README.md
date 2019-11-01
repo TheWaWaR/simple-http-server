@@ -36,7 +36,7 @@ OPTIONS:
         --try-file <PATH>
             serve this file (server root relative) in place of missing files (useful for single page apps) [aliases:
             try-file-404]
-    -l, --upload_size_limit <upload_size_limit>    Upload file size limit (default 8 Mb) [default: 8000000]
+    -l, --upload-size-limit <upload_size_limit>    Upload file size limit [bytes] [default: 8000000]
 
 
 ```
