@@ -109,6 +109,7 @@ fn main() {
              .long("upload-size-limit")
              .takes_value(true)
              .default_value("8000000")
+             .value_name("NUM")
              .validator(|s| {
                  match s.parse::<u64>() {
                      Ok(_) => Ok(()),
