@@ -5,7 +5,7 @@
 
 ### Command Line Arguments
 ```
-Simple HTTP(s) Server 0.4.7
+Simple HTTP(s) Server 0.6.0
 
 USAGE:
     simple-http-server [FLAGS] [OPTIONS] [--] [root]
@@ -22,21 +22,23 @@ FLAGS:
     -V, --version    Prints version information
 
 OPTIONS:
-    -a, --auth <auth>               HTTP Basic Auth (username:password)
-        --cert <cert>               TLS/SSL certificate (pkcs#12 format)
-        --certpass <certpass>       TLS/SSL certificate password
-    -c, --compress <compress>...    Enable file compression: gzip/deflate
-                                        Example: -c=js,d.ts
-                                        Note: disabled on partial request!
-        --ip <ip>                   IP address to bind [default: 0.0.0.0]
-    -p, --port <port>               Port number [default: 8000]
-        --redirect <redirect>       takes a URL to redirect to using HTTP 301 Moved Permanently
-    -t, --threads <threads>         How many worker threads [default: 3]
-        --try-file <PATH>           serve this file (server root relative) in place of missing files (useful for single
-                                    page apps) [aliases: try-file-404]
+    -a, --auth <auth>                              HTTP Basic Auth (username:password)
+        --cert <cert>                              TLS/SSL certificate (pkcs#12 format)
+        --certpass <certpass>                      TLS/SSL certificate password
+    -c, --compress <compress>...
+            Enable file compression: gzip/deflate
+                Example: -c=js,d.ts
+                Note: disabled on partial request!
+        --ip <ip>                                  IP address to bind [default: 0.0.0.0]
+    -p, --port <port>                              Port number [default: 8000]
+        --redirect <redirect>                      takes a URL to redirect to using HTTP 301 Moved Permanently
+    -t, --threads <threads>                        How many worker threads [default: 3]
+        --try-file <PATH>
+            serve this file (server root relative) in place of missing files (useful for single page apps) [aliases:
+            try-file-404]
+    -l, --upload-size-limit <upload_size_limit>    Upload file size limit [bytes] [default: 8000000]
 
-ARGS:
-    <root>    Root directory
+
 ```
 
 # Installation

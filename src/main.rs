@@ -104,6 +104,18 @@ fn main() {
              long("certpass")
              .takes_value(true)
              .help("TLS/SSL certificate password"))
+        .arg(clap::Arg::with_name("upload_size_limit")
+             .short("l")
+             .long("upload-size-limit")
+             .takes_value(true)
+             .default_value("8000000")
+             .value_name("NUM")
+             .validator(|s| {
+                 match s.parse::<u64>() {
+                     Ok(_) => Ok(()),
+                     Err(e) => Err(e.description().to_string())
+                 }})
+             .help("Upload file size limit [bytes]"))
         .arg(clap::Arg::with_name("ip")
              .long("ip")
              .takes_value(true)
@@ -206,6 +218,11 @@ fn main() {
     let cors = matches.is_present("cors");
     let ip = matches.value_of("ip").unwrap();
     let port = matches.value_of("port").unwrap().parse::<u16>().unwrap();
+    let upload_size_limit = matches
+        .value_of("upload_size_limit")
+        .unwrap()
+        .parse::<u64>()
+        .unwrap();
     let auth = matches.value_of("auth");
     let compress = matches.values_of_lossy("compress");
     let threads = matches.value_of("threads").unwrap().parse::<u8>().unwrap();
@@ -272,6 +289,7 @@ fn main() {
             .clone()
             .map(|exts| exts.iter().map(|s| format!(".{}", s)).collect()),
         try_file_404: try_file_404.map(PathBuf::from),
+        upload_size_limit,
     });
     if cors {
         chain.link_around(CorsMiddleware::with_allow_any());
@@ -331,6 +349,7 @@ struct MainHandler {
     sort: bool,
     compress: Option<Vec<String>>,
     try_file_404: Option<PathBuf>,
+    upload_size_limit: u64,
 }
 
 impl Handler for MainHandler {
@@ -409,7 +428,7 @@ impl MainHandler {
                 // Fetching all data and processing it.
                 // save().temp() reads the request fully, parsing all fields and saving all files
                 // in a new temporary directory under the OS temporary directory.
-                match multipart.save().temp() {
+                match multipart.save().size_limit(self.upload_size_limit).temp() {
                     SaveResult::Full(entries) => {
                         for (_, fields) in entries.fields {
                             for field in fields {
