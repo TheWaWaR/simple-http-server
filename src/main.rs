@@ -511,7 +511,7 @@ impl MainHandler {
         let breadcrumb = if !path_prefix.is_empty() {
             let mut breadcrumb = path_prefix.to_owned();
             let mut bread_links: Vec<String> = Vec::new();
-            bread_links.push(breadcrumb.pop().unwrap().to_owned());
+            bread_links.push(breadcrumb.pop().unwrap());
             while !breadcrumb.is_empty() {
                 bread_links.push(format!(
                     r#"<a href="/{link}/"><strong>{label}</strong></a>"#,
