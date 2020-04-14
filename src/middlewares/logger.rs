@@ -68,7 +68,7 @@ impl AfterMiddleware for RequestLogger {
         } else {
             Ok(error_resp(
                 err.response.status.unwrap_or(status::InternalServerError),
-                err.error.description(),
+                err.error.to_string().as_str(),
             ))
         }
     }

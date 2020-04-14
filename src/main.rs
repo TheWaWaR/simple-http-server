@@ -5,7 +5,6 @@ mod util;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::env;
-use std::error::Error;
 use std::fs;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::net::IpAddr;
@@ -58,7 +57,7 @@ fn main() {
                              Err("Not directory".to_owned())
                          }
                      },
-                     Err(e) => Err(e.description().to_string())
+                     Err(e) => Err(e.to_string())
                  }
              })
              .help("Root directory"))
@@ -93,7 +92,7 @@ fn main() {
                              Err("Not a regular file".to_owned())
                          }
                      },
-                     Err(e) => Err(e.description().to_string())
+                     Err(e) => Err(e.to_string())
                  }
              })
              .help("TLS/SSL certificate (pkcs#12 format)"))
@@ -113,7 +112,7 @@ fn main() {
              .validator(|s| {
                  match s.parse::<u64>() {
                      Ok(_) => Ok(()),
-                     Err(e) => Err(e.description().to_string())
+                     Err(e) => Err(e.to_string())
                  }})
              .help("Upload file size limit [bytes]"))
         .arg(clap::Arg::with_name("ip")
@@ -123,7 +122,7 @@ fn main() {
              .validator(|s| {
                  match IpAddr::from_str(&s) {
                      Ok(_) => Ok(()),
-                     Err(e) => Err(e.description().to_string())
+                     Err(e) => Err(e.to_string())
                  }
              })
              .help("IP address to bind"))
@@ -135,7 +134,7 @@ fn main() {
              .validator(|s| {
                  match s.parse::<u16>() {
                      Ok(_) => Ok(()),
-                     Err(e) => Err(e.description().to_string())
+                     Err(e) => Err(e.to_string())
                  }
              })
              .help("Port number"))
@@ -173,7 +172,7 @@ fn main() {
                              Err("Not positive number".to_owned())
                          }
                      }
-                     Err(e) => Err(e.description().to_string())
+                     Err(e) => Err(e.to_string())
                  }
              })
              .help("How many worker threads"))
@@ -189,7 +188,7 @@ fn main() {
                              Err("Not a file".to_owned())
                          }
                      },
-                     Err(e) => Err(e.description().to_string())
+                     Err(e) => Err(e.to_string())
                  }
              })
              .help("serve this file (server root relative) in place of missing files (useful for single page apps)"))
@@ -466,12 +465,11 @@ impl MainHandler {
                         }
                         Ok(())
                     }
-                    SaveResult::Partial(_entries, reason) => Err((
-                        status::InternalServerError,
-                        reason.unwrap_err().description().to_owned(),
-                    )),
+                    SaveResult::Partial(_entries, reason) => {
+                        Err((status::InternalServerError, reason.unwrap_err().to_string()))
+                    }
                     SaveResult::Error(error) => {
-                        Err((status::InternalServerError, error.description().to_owned()))
+                        Err((status::InternalServerError, error.to_string()))
                     }
                 }
             }
