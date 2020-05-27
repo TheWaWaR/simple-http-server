@@ -40,8 +40,7 @@ impl RequestLogger {
                         (req.method.to_string().as_str(), &None),
                         (
                             percent_decode(req.url.as_ref().path().as_bytes())
-                                .decode_utf8()
-                                .unwrap()
+                                .decode_utf8_lossy()
                                 .to_string()
                                 .as_str(),
                             &None,

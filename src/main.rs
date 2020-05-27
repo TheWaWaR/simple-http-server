@@ -377,7 +377,19 @@ impl Handler for MainHandler {
             .path()
             .into_iter()
             .filter(|s| !s.is_empty())
-            .map(|s| PathBuf::from(&*percent_decode(s.as_bytes()).decode_utf8().unwrap()))
+            .map(|s| {
+                percent_decode(s.as_bytes())
+                    .decode_utf8()
+                    .map(|path| PathBuf::from(&*path))
+                    .map_err(|_err| {
+                        IronError::new(
+                            StringError(format!("invalid path: {}", s)),
+                            status::BadRequest,
+                        )
+                    })
+            })
+            .collect::<Result<Vec<PathBuf>, _>>()?
+            .into_iter()
             .collect::<PathBuf>();
         fs_path.push(&path_prefix);
         let fs_path = fs_path.parse_dot().unwrap();
