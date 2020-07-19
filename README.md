@@ -5,7 +5,7 @@
 
 ### Command Line Arguments
 ```
-Simple HTTP(s) Server 0.6.0
+Simple HTTP(s) Server 0.6.1
 
 USAGE:
     simple-http-server [FLAGS] [OPTIONS] [--] [root]
