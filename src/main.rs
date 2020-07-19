@@ -800,8 +800,9 @@ impl MainHandler {
             }
             Method::Get => {
                 // Set mime type
-                let mime = mime_types::guess_mime_type(path);
-                resp.set_mut(mime);
+                let mime = mime_types::from_path(path).first_or_octet_stream();
+                resp.headers
+                    .set_raw("content-type", vec![mime.to_string().into_bytes()]);
 
                 if self.range {
                     let mut range = req.headers.get::<Range>();
