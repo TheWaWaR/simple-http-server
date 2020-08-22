@@ -23,6 +23,7 @@ use iron_cors::CorsMiddleware;
 use lazy_static::lazy_static;
 use mime_guess as mime_types;
 use multipart::server::{Multipart, SaveResult};
+use open;
 use path_dedot::ParseDot;
 use percent_encoding::percent_decode;
 use pretty_bytes::converter::convert;
@@ -197,6 +198,10 @@ fn main() {
              .short("s")
              .takes_value(false)
              .help("Disable all outputs"))
+        .arg(clap::Arg::with_name("open")
+             .long("open")
+             .short("o")
+             .help("Open the page in the default browser"))
         .get_matches();
 
     let root = matches
@@ -242,6 +247,18 @@ fn main() {
     } else {
         format!("{:?}", compression_exts)
     };
+
+    let open = matches.is_present("open");
+
+    if open {
+        let host = format!("http://{}", &addr);
+
+        match open::that(&host) {
+            Ok(_) => println!("Openning {} in default browser", &host),
+            Err(err) => eprintln!("Unable to open in default browser {}", err.to_string()),
+        }
+    }
+
     let silent = matches.is_present("silent");
 
     if !silent {
