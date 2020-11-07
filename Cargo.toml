@@ -19,7 +19,7 @@ flate2 = "1.0.11"
 filetime = "0.2.7"
 pretty-bytes = "0.2.2"
 url = "2.1.0"
-hyper-native-tls = "0.3.0"
+hyper-native-tls = {version = "0.3.0", optional=true}
 mime_guess = "2.0"
 # Iron crates
 iron = "0.6.1"
@@ -28,3 +28,7 @@ multipart = { version = "0.16.1", features = ["iron"] }
 htmlescape = "0.3.1"
 percent-encoding = "2.1.0"
 path-dedot = "1"
+
+[features]
+default = ["tls"]
+tls = ["hyper-native-tls"]
