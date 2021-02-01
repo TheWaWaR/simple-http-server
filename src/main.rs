@@ -345,6 +345,8 @@ fn main() {
     }
     let mut server = Iron::new(chain);
     server.threads = threads as usize;
+
+    #[cfg(feature = "tls")]
     let rv = if let Some(cert) = cert {
         use hyper_native_tls::NativeTlsServer;
         let ssl = NativeTlsServer::new(cert, certpass.unwrap_or("")).unwrap();
@@ -352,6 +354,19 @@ fn main() {
     } else {
         server.http(&addr)
     };
+    #[cfg(not(feature = "tls"))]
+    let rv = if cert.is_some() {
+        printer
+            .println_err(
+                "{}: TLS support is not enabled during compilation of simple-http-server",
+                &[("ERROR", &Some(build_spec(Some(Color::Red), true)))],
+            )
+            .unwrap();
+        std::process::exit(1)
+    } else {
+        server.http(&addr)
+    };
+
     if let Err(e) = rv {
         printer
             .println_err(
