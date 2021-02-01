@@ -21,6 +21,7 @@ pretty-bytes = "0.2.2"
 url = "2.1.0"
 hyper-native-tls = "0.3.0"
 mime_guess = "2.0"
+open = "1"
 # Iron crates
 iron = "0.6.1"
 iron-cors = "0.8.0"
