@@ -432,6 +432,20 @@ impl Handler for MainHandler {
                 status::Forbidden,
             ));
         }
+        
+        // prevents an issue where the program's file scope could be escaped
+        match fs_path.to_str() {
+            Some(val) => {
+                println!("{}", val);
+                if val.contains("../") {
+                    return Err(IronError::new(
+                        io::Error::new(io::ErrorKind::PermissionDenied, "Path out of scope"),
+                        status::Forbidden,
+                    ));
+                }
+            }
+            _ => ()
+        }
 
         if self.upload && req.method == method::Post {
             if let Err((s, msg)) = self.save_files(req, &fs_path) {
