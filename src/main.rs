@@ -490,6 +490,13 @@ impl MainHandler {
                                 let mut data = field.data.readable().unwrap();
                                 let headers = &field.headers;
                                 let mut target_path = path.clone();
+                                
+                                if headers.filename.clone().unwrap().contains("../") {
+                                    return Err((
+                                        status::Forbidden,
+                                        format!("Using filename to elevate folder scope is forbidden."),
+                                    ));
+                                }
 
                                 target_path.push(headers.filename.clone().unwrap());
                                 if let Err(errno) = std::fs::File::create(target_path)
