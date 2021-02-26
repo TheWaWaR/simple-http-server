@@ -490,15 +490,16 @@ impl MainHandler {
                                 let mut data = field.data.readable().unwrap();
                                 let headers = &field.headers;
                                 let mut target_path = path.clone();
-                                
-                                if headers.filename.clone().unwrap().contains("../") {
+
+                                target_path.push(headers.filename.clone().unwrap());
+
+                                if !target_path.starts_with(path) {
                                     return Err((
                                         status::Forbidden,
-                                        format!("Using filename to elevate folder scope is forbidden."),
+                                        format!("The file's save path was outside the fileserver's scope."),
                                     ));
                                 }
 
-                                target_path.push(headers.filename.clone().unwrap());
                                 if let Err(errno) = std::fs::File::create(target_path)
                                     .and_then(|mut file| io::copy(&mut data, &mut file))
                                 {
