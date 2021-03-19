@@ -492,6 +492,14 @@ impl MainHandler {
                                 let mut target_path = path.clone();
 
                                 target_path.push(headers.filename.clone().unwrap());
+
+                                if !target_path.starts_with(path) {
+                                    return Err((
+                                        status::Forbidden,
+                                        format!("The file's save path was outside the fileserver's scope."),
+                                    ));
+                                }
+
                                 if let Err(errno) = std::fs::File::create(target_path)
                                     .and_then(|mut file| io::copy(&mut data, &mut file))
                                 {
