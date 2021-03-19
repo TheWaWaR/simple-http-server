@@ -1,0 +1,118 @@
+name: ci
+
+on:
+  pull_request: {}
+  push: {}
+  release:
+    types: [published]
+
+jobs:
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          override: true
+          components: rustfmt
+      - uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          override: true
+          components: clippy
+      - uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-targets --all-features -- -F warnings
+
+  test:
+    name: Unitest (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          override: true
+          components: clippy
+      - uses: actions-rs/cargo@v1
+        env:
+          RUST_BACKTRACE: full
+          RUSTFLAGS: -F warnings
+        with:
+          command: test
+          args: --all --all-features
+      - name: "Ensure Cargo.lock is not modified"
+        run: git diff --exit-code Cargo.lock
+
+  build-release:
+    name: Build release Executable (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    env:
+      BINARY_EXTENSION: ${{ endsWith(matrix.target, '-msvc') && '.exe' || '' }}
+      PATH_BINARY: ${{ github.workspace }}/target/release/simple-http-server${{ endsWith(matrix.target, '-msvc') && '.exe' || '' }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          override: true
+          components: clippy
+          target: ${{ matrix.target }}
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --bin simple-http-server --locked
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ${{ matrix.target }}-simple-http-server${{ env.BINARY_EXTENSION }}
+          path: ${{ env.PATH_BINARY }}
+      - name: Evaluate shasum
+        run: echo -n $(shasum -ba 256 ${{ env.PATH_BINARY }} | cut -d " " -f 1) > ${{ env.PATH_BINARY }}.sha256
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ${{ matrix.target }}-simple-http-server.sha256
+          path: ${{ env.PATH_BINARY }}.sha256
+
+      - name: '[Optional] Publish Artifact'
+        if: ${{ github.event_name == 'release' }}
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: ${{ env.PATH_BINARY }}
+          asset_name: ${{ matrix.target }}-simple-http-server${{ env.BINARY_EXTENSION }}
+          tag: ${{ github.ref }}
+          overwrite: true
+      - name: '[Optional] Publish Artifact (shasum)'
+        if: ${{ github.event_name == 'release' }}
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: ${{ env.PATH_BINARY }}.sha256
+          asset_name: ${{ matrix.target }}-simple-http-server${{ env.BINARY_EXTENSION }}.sha256
+          tag: ${{ github.ref }}
+          overwrite: true
