@@ -31,8 +31,8 @@ use termcolor::{Color, ColorSpec};
 
 use color::{build_spec, Printer};
 use util::{
-    enable_string, encode_link_path, error_io2iron, error_resp, now_string,
-    system_time_to_date_time, StringError, ROOT_LINK,
+    enable_string, encode_link_path, error_io2iron, error_resp, now_string, root_link,
+    system_time_to_date_time, StringError,
 };
 
 use middlewares::{AuthChecker, CompressionHandler, RequestLogger};
@@ -202,6 +202,12 @@ fn main() {
              .long("open")
              .short("o")
              .help("Open the page in the default browser"))
+        .arg(clap::Arg::with_name("baseurl")
+            .short("b")
+            .long("baseurl")
+            .default_value("/")
+            .takes_value(true)
+            .help("base URL to prepend in directory indexes. For reverse proxying."))
         .get_matches();
 
     let root = matches
@@ -260,6 +266,7 @@ fn main() {
     }
 
     let silent = matches.is_present("silent");
+    let baseurl: &str = matches.value_of("baseurl").unwrap();
 
     if !silent {
         printer
@@ -318,6 +325,7 @@ fn main() {
             .map(|exts| exts.iter().map(|s| format!(".{}", s)).collect()),
         try_file_404: try_file_404.map(PathBuf::from),
         upload_size_limit,
+        baseurl: baseurl.to_string(),
     });
     if cors {
         chain.link_around(CorsMiddleware::with_allow_any());
@@ -341,6 +349,7 @@ fn main() {
     if !silent {
         chain.link_after(RequestLogger {
             printer: Printer::new(),
+            baseurl: baseurl.to_string(),
         });
     }
     let mut server = Iron::new(chain);
@@ -393,6 +402,7 @@ struct MainHandler {
     compress: Option<Vec<String>>,
     try_file_404: Option<PathBuf>,
     upload_size_limit: u64,
+    baseurl: String,
 }
 
 impl Handler for MainHandler {
@@ -435,7 +445,7 @@ impl Handler for MainHandler {
 
         if self.upload && req.method == method::Post {
             if let Err((s, msg)) = self.save_files(req, &fs_path) {
-                return Ok(error_resp(s, &msg));
+                return Ok(error_resp(s, &msg, &self.baseurl));
             } else {
                 return Ok(Response::with((status::Found, Redirect(req.url.clone()))));
             }
@@ -465,7 +475,7 @@ impl Handler for MainHandler {
                 .iter()
                 .map(|s| s.to_string_lossy().to_string())
                 .collect();
-            self.list_directory(req, &fs_path, &path_prefix)
+            self.list_directory(req, &fs_path, &path_prefix, &self.baseurl[..])
         } else {
             self.send_file(req, &fs_path)
         }
@@ -529,6 +539,7 @@ impl MainHandler {
         req: &mut Request,
         fs_path: &PathBuf,
         path_prefix: &[String],
+        baseurl: &str,
     ) -> IronResult<Response> {
         struct Entry {
             filename: String,
@@ -556,16 +567,17 @@ impl MainHandler {
             bread_links.push(breadcrumb.pop().unwrap());
             while !breadcrumb.is_empty() {
                 bread_links.push(format!(
-                    r#"<a href="/{link}/"><strong>{label}</strong></a>"#,
+                    r#"<a href="{baseurl}{link}/"><strong>{label}</strong></a>"#,
                     link = encode_link_path(&breadcrumb),
                     label = encode_minimal(&breadcrumb.pop().unwrap().to_owned()),
+                    baseurl = baseurl,
                 ));
             }
-            bread_links.push(ROOT_LINK.to_owned());
+            bread_links.push(root_link(baseurl));
             bread_links.reverse();
             bread_links.join(" / ")
         } else {
-            ROOT_LINK.to_owned()
+            root_link(baseurl)
         };
 
         // Sort links
@@ -645,16 +657,17 @@ impl MainHandler {
             format!(
                 r#"
 <tr>
-  <th><a href="/{link}?sort=name&order={name_order}">Name</a></th>
-  <th><a href="/{link}?sort=modified&order={modified_order}">Last modified</a></th>
-  <th><a href="/{link}?sort=size&order={size_order}">Size</a></th>
+  <th><a href="{baseurl}{link}?sort=name&order={name_order}">Name</a></th>
+  <th><a href="{baseurl}{link}?sort=modified&order={modified_order}">Last modified</a></th>
+  <th><a href="{baseurl}{link}?sort=size&order={size_order}">Size</a></th>
 </tr>
 <tr><td style="border-top:1px dashed #BBB;" colspan="5"></td></tr>
 "#,
                 link = encode_link_path(&current_link),
                 name_order = order_labels.get("name").unwrap_or(&DEFAULT_ORDER),
                 modified_order = order_labels.get("modified").unwrap_or(&DEFAULT_ORDER),
-                size_order = order_labels.get("size").unwrap_or(&DEFAULT_ORDER)
+                size_order = order_labels.get("size").unwrap_or(&DEFAULT_ORDER),
+                baseurl = baseurl,
             )
         } else {
             "".to_owned()
@@ -670,12 +683,13 @@ impl MainHandler {
             rows.push(format!(
                 r#"
 <tr>
-  <td><a href="/{link}"><strong>[Up]</strong></a></td>
+  <td><a href="{baseurl}{link}"><strong>[Up]</strong></a></td>
   <td></td>
   <td></td>
 </tr>
 "#,
-                link = encode_link_path(&link)
+                link = encode_link_path(&link),
+                baseurl = baseurl,
             ));
         } else {
             rows.push(r#"<tr><td>&nbsp;</td></tr>"#.to_owned());
@@ -725,7 +739,7 @@ impl MainHandler {
             rows.push(format!(
                 r#"
 <tr>
-  <td><a {linkstyle} href="/{link}">{label}</a></td>
+  <td><a {linkstyle} href="{baseurl}{link}">{label}</a></td>
   <td style="color:#888;">[{modified}]</td>
   <td><bold>{filesize}</bold></td>
 </tr>
@@ -734,7 +748,8 @@ impl MainHandler {
                 link = encode_link_path(&link),
                 label = encode_minimal(&file_name_label),
                 modified = file_modified,
-                filesize = file_size
+                filesize = file_size,
+                baseurl = baseurl,
             ));
         }
 
@@ -742,12 +757,13 @@ impl MainHandler {
         let upload_form = if self.upload {
             format!(
                 r#"
-<form style="margin-top:1em; margin-bottom:1em;" action="/{path}" method="POST" enctype="multipart/form-data">
+<form style="margin-top:1em; margin-bottom:1em;" action="{baseurl}{path}" method="POST" enctype="multipart/form-data">
   <input type="file" name="files" accept="*" multiple />
   <input type="submit" value="Upload" />
 </form>
 "#,
-                path = encode_link_path(path_prefix)
+                path = encode_link_path(path_prefix),
+                baseurl = baseurl,
             )
         } else {
             "".to_owned()
