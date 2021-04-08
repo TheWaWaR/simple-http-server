@@ -27,6 +27,8 @@ use open;
 use path_dedot::ParseDot;
 use percent_encoding::percent_decode;
 use pretty_bytes::converter::convert;
+use rand::distributions::Alphanumeric;
+use rand::{thread_rng, Rng};
 use termcolor::{Color, ColorSpec};
 
 use color::{build_spec, Printer};
@@ -69,7 +71,7 @@ fn main() {
         .arg(clap::Arg::with_name("upload")
              .short("u")
              .long("upload")
-             .help("Enable upload files (multiple select)"))
+             .help("Enable upload files. (multiple select) (CSRF token required)"))
         .arg(clap::Arg::with_name("redirect").long("redirect")
              .takes_value(true)
              .validator(|url_string| iron::Url::parse(url_string.as_str()).map(|_| ()))
@@ -209,7 +211,7 @@ fn main() {
         .map(|s| PathBuf::from(s).canonicalize().unwrap())
         .unwrap_or_else(|| env::current_dir().unwrap());
     let index = matches.is_present("index");
-    let upload = matches.is_present("upload");
+    let upload_arg = matches.is_present("upload");
     let redirect_to = matches
         .value_of("redirect")
         .map(iron::Url::parse)
@@ -261,10 +263,22 @@ fn main() {
 
     let silent = matches.is_present("silent");
 
+    let upload: Option<Upload> = if upload_arg {
+        let token: String = thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(8)
+            .map(char::from)
+            .collect();
+        Some(Upload { csrf_token: token })
+    } else {
+        None
+    };
+
     if !silent {
         printer
             .println_out(
-                r#"     Index: {}, Upload: {}, Cache: {}, Cors: {}, Range: {}, Sort: {}, Threads: {}
+                r#"     Index: {}, Cache: {}, Cors: {}, Range: {}, Sort: {}, Threads: {}
+          Upload: {}, CSRF Token: {}
           Auth: {}, Compression: {}
          https: {}, Cert: {}, Cert-Password: {}
           Root: {},
@@ -273,12 +287,18 @@ fn main() {
     ======== [{}] ========"#,
                 &vec![
                     enable_string(index),
-                    enable_string(upload),
                     enable_string(cache),
                     enable_string(cors),
                     enable_string(range),
                     enable_string(sort),
                     threads.to_string(),
+                    enable_string(upload_arg),
+                    (if upload.is_some() {
+                        upload.as_ref().unwrap().csrf_token.as_str()
+                    } else {
+                        ""
+                    })
+                    .to_string(),
                     auth.unwrap_or("disabled").to_string(),
                     compression_string,
                     (if cert.is_some() {
@@ -381,11 +401,14 @@ fn main() {
         std::process::exit(1);
     };
 }
+struct Upload {
+    csrf_token: String,
+}
 
 struct MainHandler {
     root: PathBuf,
     index: bool,
-    upload: bool,
+    upload: Option<Upload>,
     cache: bool,
     range: bool,
     redirect_to: Option<iron::Url>,
@@ -433,7 +456,7 @@ impl Handler for MainHandler {
             ));
         }
 
-        if self.upload && req.method == method::Post {
+        if self.upload.is_some() && req.method == method::Post {
             if let Err((s, msg)) = self.save_files(req, &fs_path) {
                 return Ok(error_resp(s, &msg));
             } else {
@@ -485,26 +508,65 @@ impl MainHandler {
                 // in a new temporary directory under the OS temporary directory.
                 match multipart.save().size_limit(self.upload_size_limit).temp() {
                     SaveResult::Full(entries) => {
-                        for (_, fields) in entries.fields {
-                            for field in fields {
-                                let mut data = field.data.readable().unwrap();
-                                let headers = &field.headers;
-                                let mut target_path = path.clone();
-
-                                target_path.push(headers.filename.clone().unwrap());
-                                if let Err(errno) = std::fs::File::create(target_path)
-                                    .and_then(|mut file| io::copy(&mut data, &mut file))
-                                {
+                        // Pull out csrf field to check if token matches one generated
+                        let csrf_field = match entries.fields.get("csrf") {
+                            Some(fields) => match fields.first() {
+                                Some(field) => field,
+                                None => {
                                     return Err((
-                                        status::InternalServerError,
-                                        format!("Copy file failed: {}", errno),
-                                    ));
-                                } else {
-                                    println!(
-                                        "  >> File saved: {}",
-                                        headers.filename.clone().unwrap()
-                                    );
+                                        status::BadRequest,
+                                        String::from("csrf token not provided"),
+                                    ))
                                 }
+                            },
+                            None => {
+                                return Err((
+                                    status::BadRequest,
+                                    String::from("csrf token not provided"),
+                                ))
+                            }
+                        };
+
+                        // Read token value from field
+                        let mut token = String::new();
+                        csrf_field
+                            .data
+                            .readable()
+                            .unwrap()
+                            .read_to_string(&mut token)
+                            .unwrap();
+
+                        // Check if they match
+                        if self.upload.as_ref().unwrap().csrf_token != token {
+                            return Err((
+                                status::BadRequest,
+                                String::from("csrf token does not match"),
+                            ));
+                        }
+
+                        // Grab all the fields named files
+                        let files_fields = match entries.fields.get("files") {
+                            Some(fields) => fields,
+                            None => {
+                                return Err((status::BadRequest, String::from("no files provided")))
+                            }
+                        };
+
+                        for field in files_fields {
+                            let mut data = field.data.readable().unwrap();
+                            let headers = &field.headers;
+                            let mut target_path = path.clone();
+
+                            target_path.push(headers.filename.clone().unwrap());
+                            if let Err(errno) = std::fs::File::create(target_path)
+                                .and_then(|mut file| io::copy(&mut data, &mut file))
+                            {
+                                return Err((
+                                    status::InternalServerError,
+                                    format!("Copy file failed: {}", errno),
+                                ));
+                            } else {
+                                println!("  >> File saved: {}", headers.filename.clone().unwrap());
                             }
                         }
                         Ok(())
@@ -738,16 +800,18 @@ impl MainHandler {
             ));
         }
 
-        // Optinal upload form
-        let upload_form = if self.upload {
+        // Optional upload form
+        let upload_form = if self.upload.is_some() {
             format!(
                 r#"
 <form style="margin-top:1em; margin-bottom:1em;" action="/{path}" method="POST" enctype="multipart/form-data">
   <input type="file" name="files" accept="*" multiple />
+  <input type="hidden" name="csrf" value="{csrf}"/>
   <input type="submit" value="Upload" />
 </form>
 "#,
-                path = encode_link_path(path_prefix)
+                path = encode_link_path(path_prefix),
+                csrf = self.upload.as_ref().unwrap().csrf_token
             )
         } else {
             "".to_owned()
