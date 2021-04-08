@@ -266,7 +266,7 @@ fn main() {
     let upload: Option<Upload> = if upload_arg {
         let token: String = thread_rng()
             .sample_iter(&Alphanumeric)
-            .take(8)
+            .take(10)
             .map(char::from)
             .collect();
         Some(Upload { csrf_token: token })
@@ -515,14 +515,14 @@ impl MainHandler {
                                 None => {
                                     return Err((
                                         status::BadRequest,
-                                        String::from("csrf token not provided"),
+                                        String::from("csrf parameter not provided"),
                                     ))
                                 }
                             },
                             None => {
                                 return Err((
                                     status::BadRequest,
-                                    String::from("csrf token not provided"),
+                                    String::from("csrf parameter not provided"),
                                 ))
                             }
                         };
