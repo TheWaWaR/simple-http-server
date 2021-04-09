@@ -18,7 +18,7 @@ FLAGS:
         --norange    Disable header::Range support (partial request)
         --nosort     Disable directory entries sort (by: name, modified, size)
     -s, --silent     Disable all outputs
-    -u, --upload     Enable upload files (multiple select)
+    -u, --upload     Enable upload files (multiple select) (CSRF token required)
     -V, --version    Prints version information
 
 OPTIONS:
@@ -80,6 +80,7 @@ simple-http-server -h
   - [Range, If-Range, If-Match] => [Content-Range, 206, 416]
 - [x] (default disabled) Automatic render index page [index.html, index.htm]
 - [x] (default disabled) Upload file
+  - A CSRF token is generated when upload is enabled and must be sent as a parameter when uploading a file
 - [x] (default disabled) HTTP Basic Authentication (by username:password)
 - [x] Sort by: filename, filesize, modifled
 - [x] HTTPS support
