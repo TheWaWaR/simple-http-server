@@ -509,16 +509,13 @@ impl MainHandler {
                 match multipart.save().size_limit(self.upload_size_limit).temp() {
                     SaveResult::Full(entries) => {
                         // Pull out csrf field to check if token matches one generated
-                        let csrf_field = match entries.fields.get("csrf") {
-                            Some(fields) => match fields.first() {
-                                Some(field) => field,
-                                None => {
-                                    return Err((
-                                        status::BadRequest,
-                                        String::from("csrf parameter not provided"),
-                                    ))
-                                }
-                            },
+                        let csrf_field = match entries
+                            .fields
+                            .get("csrf")
+                            .map(|fields| fields.first())
+                            .unwrap_or(None)
+                        {
+                            Some(field) => field,
                             None => {
                                 return Err((
                                     status::BadRequest,
