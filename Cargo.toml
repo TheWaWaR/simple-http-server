@@ -26,7 +26,7 @@ open = "1"
 # Iron crates
 iron = "0.6.1"
 iron-cors = "0.8.0"
-multipart = { version = "0.16.1", features = ["iron"] }
+multipart = { version = "0.16.1", default-features = false, features = ["server", "iron"] }
 htmlescape = "0.3.1"
 percent-encoding = "2.1.0"
 path-dedot = "1"
