@@ -102,6 +102,12 @@ fn main() {
         .arg(clap::Arg::with_name("cors")
              .long("cors")
              .help("Enable CORS via the \"Access-Control-Allow-Origin\" header"))
+        .arg(clap::Arg::with_name("coop")
+             .long("coop")
+             .help("Enable \"Cross-Origin-Opener-Policy\": same-origin"))
+        .arg(clap::Arg::with_name("coep")
+             .long("coep")
+             .help("Enable \"Cross-Origin-Embedder-Policy\": require-corp"))
         .arg(clap::Arg::with_name("certpass").
              long("certpass")
              .takes_value(true)
@@ -222,6 +228,8 @@ fn main() {
     let cert = matches.value_of("cert");
     let certpass = matches.value_of("certpass");
     let cors = matches.is_present("cors");
+    let coop = matches.is_present("coop");
+    let coep = matches.is_present("coep");
     let ip = matches.value_of("ip").unwrap();
     let port = matches.value_of("port").unwrap().parse::<u16>().unwrap();
     let upload_size_limit = matches
@@ -277,7 +285,7 @@ fn main() {
     if !silent {
         printer
             .println_out(
-                r#"     Index: {}, Cache: {}, Cors: {}, Range: {}, Sort: {}, Threads: {}
+                r#"     Index: {}, Cache: {}, Cors: {}, Coop: {}, Coep: {}, Range: {}, Sort: {}, Threads: {}
           Upload: {}, CSRF Token: {}
           Auth: {}, Compression: {}
          https: {}, Cert: {}, Cert-Password: {}
@@ -289,6 +297,8 @@ fn main() {
                     enable_string(index),
                     enable_string(cache),
                     enable_string(cors),
+                    enable_string(coop),
+                    enable_string(coep),
                     enable_string(range),
                     enable_string(sort),
                     threads.to_string(),
@@ -331,6 +341,8 @@ fn main() {
         upload,
         cache,
         range,
+        coop,
+        coep,
         redirect_to,
         sort,
         compress: compress
@@ -411,6 +423,8 @@ struct MainHandler {
     upload: Option<Upload>,
     cache: bool,
     range: bool,
+    coop: bool,
+    coep: bool,
     redirect_to: Option<iron::Url>,
     sort: bool,
     compress: Option<Vec<String>>,
@@ -896,7 +910,14 @@ impl MainHandler {
                 let mime = mime_types::from_path(path).first_or_octet_stream();
                 resp.headers
                     .set_raw("content-type", vec![mime.to_string().into_bytes()]);
-
+                if self.coop {
+                    resp.headers
+                        .set_raw("Cross-Origin-Opener-Policy", vec!["same-origin".to_string().into_bytes()]);
+                }
+                if self.coep {
+                    resp.headers
+                        .set_raw("Cross-Origin-Embedder-Policy", vec!["require-corp".to_string().into_bytes()]);
+                }
                 if self.range {
                     let mut range = req.headers.get::<Range>();
 
