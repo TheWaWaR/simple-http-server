@@ -12,6 +12,8 @@ USAGE:
 
 FLAGS:
         --cors       Enable CORS via the "Access-Control-Allow-Origin" header
+        --coop       Add "Cross-Origin-Opener-Policy" HTTP header and set it to "same-origin"
+        --coep       Add "Cross-Origin-Embedder-Policy" HTTP header and set it to "require-corp"
     -h, --help       Prints help information
     -i, --index      Enable automatic render index page [index.html, index.htm]
         --nocache    Disable http cache
