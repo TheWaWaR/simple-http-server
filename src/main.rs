@@ -911,12 +911,16 @@ impl MainHandler {
                 resp.headers
                     .set_raw("content-type", vec![mime.to_string().into_bytes()]);
                 if self.coop {
-                    resp.headers
-                        .set_raw("Cross-Origin-Opener-Policy", vec!["same-origin".to_string().into_bytes()]);
+                    resp.headers.set_raw(
+                        "Cross-Origin-Opener-Policy",
+                        vec!["same-origin".to_string().into_bytes()],
+                    );
                 }
                 if self.coep {
-                    resp.headers
-                        .set_raw("Cross-Origin-Embedder-Policy", vec!["require-corp".to_string().into_bytes()]);
+                    resp.headers.set_raw(
+                        "Cross-Origin-Embedder-Policy",
+                        vec!["require-corp".to_string().into_bytes()],
+                    );
                 }
                 if self.range {
                     let mut range = req.headers.get::<Range>();
