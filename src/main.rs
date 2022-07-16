@@ -104,10 +104,10 @@ fn main() {
              .help("Enable CORS via the \"Access-Control-Allow-Origin\" header"))
         .arg(clap::Arg::with_name("coop")
              .long("coop")
-             .help("Enable \"Cross-Origin-Opener-Policy\": same-origin"))
+             .help("Add \"Cross-Origin-Opener-Policy\" HTTP header and set it to \"same-origin\""))
         .arg(clap::Arg::with_name("coep")
              .long("coep")
-             .help("Enable \"Cross-Origin-Embedder-Policy\": require-corp"))
+             .help("Add \"Cross-Origin-Embedder-Policy\" HTTP header and set it to \"require-corp\""))
         .arg(clap::Arg::with_name("certpass").
              long("certpass")
              .takes_value(true)
