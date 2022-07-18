@@ -8,5 +8,7 @@ test: export RUST_BACKTRACE := full
 test:
 	RUSTFLAGS='-F warnings'  cargo test --all --all-features
 
-ci: fmt clippy example test
+ci: fmt clippy test
 	git diff --exit-code Cargo.lock
+
+.PHONY: fmt clippy test ci
