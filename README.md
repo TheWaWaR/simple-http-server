@@ -11,6 +11,8 @@ USAGE:
     simple-http-server [FLAGS] [OPTIONS] [--] [root]
 
 FLAGS:
+        --coep       Add "Cross-Origin-Embedder-Policy" HTTP header and set it to "require-corp"
+        --coop       Add "Cross-Origin-Opener-Policy" HTTP header and set it to "same-origin"
         --cors       Enable CORS via the "Access-Control-Allow-Origin" header
     -h, --help       Prints help information
     -i, --index      Enable automatic render index page [index.html, index.htm]
