@@ -1,4 +1,8 @@
 
+The Dockerfile is copied from: https://github.com/k4yt3x/simple-http-server/blob/master/Dockerfile
+LICENS: BSD 2-Clause "Simplified" License
+   please see https://github.com/k4yt3x/simple-http-server/blob/master/LICENSE for more details
+
 **NOTE**: `Dockerfile.aarch64` is not working for now.
 
 ## Build the docker image with `v0.6.3`
