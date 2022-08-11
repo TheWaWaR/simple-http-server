@@ -23,7 +23,6 @@ url = "2.1.0"
 hyper-native-tls = { version = "0.3.0", optional = true }
 mime_guess = "2.0"
 open = "1"
-openssl = { version = "0.10", features = ["vendored"] }
 # Iron crates
 iron = "0.6.1"
 iron-cors = "0.8.0"
