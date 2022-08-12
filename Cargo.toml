@@ -21,6 +21,7 @@ pretty-bytes = "0.2.2"
 rand = "0.8.3"
 url = "2.1.0"
 hyper-native-tls = { version = "0.3.0", optional = true }
+openssl = { version = "0.10", features = ["vendored"], optional = true }
 mime_guess = "2.0"
 open = "1"
 # Iron crates
@@ -33,4 +34,5 @@ path-dedot = "1"
 
 [features]
 default = ["tls"]
+only-openssl = ["tls", "openssl"]
 tls = ["hyper-native-tls"]
