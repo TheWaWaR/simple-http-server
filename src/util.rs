@@ -21,7 +21,12 @@ const FRAGMENT_ENCODE_SET: &AsciiSet = &percent_encoding::CONTROLS
 const PATH_ENCODE_SET: &AsciiSet = &FRAGMENT_ENCODE_SET.add(b'#').add(b'?').add(b'{').add(b'}');
 const PATH_SEGMENT_ENCODE_SET: &AsciiSet = &PATH_ENCODE_SET.add(b'/').add(b'%').add(b'[').add(b']');
 
-pub const ROOT_LINK: &str = r#"<a href="/"><strong>[Root]</strong></a>"#;
+pub fn root_link(baseurl: &str) -> String {
+    format!(
+        r#"<a href="{baseurl}"><strong>[Root]</strong></a>"#,
+        baseurl = baseurl,
+    )
+}
 
 #[derive(Debug)]
 pub struct StringError(pub String);
@@ -136,7 +141,7 @@ pub fn system_time_to_date_time(t: SystemTime) -> DateTime<Local> {
     Local.timestamp_opt(sec, nsec).unwrap()
 }
 
-pub fn error_resp(s: status::Status, msg: &str) -> Response {
+pub fn error_resp(s: status::Status, msg: &str, baseurl: &str) -> Response {
     let mut resp = Response::with((
         s,
         format!(
@@ -152,7 +157,7 @@ pub fn error_resp(s: status::Status, msg: &str) -> Response {
 </body>
 </html>
 "#,
-            root_link = ROOT_LINK,
+            root_link = root_link(baseurl),
             code = s.to_u16(),
             msg = msg
         ),

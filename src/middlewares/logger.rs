@@ -17,6 +17,7 @@ lazy_static! {
 
 pub struct RequestLogger {
     pub printer: Printer,
+    pub base_url: String,
 }
 
 impl RequestLogger {
@@ -68,6 +69,7 @@ impl AfterMiddleware for RequestLogger {
             Ok(error_resp(
                 err.response.status.unwrap_or(status::InternalServerError),
                 err.error.to_string().as_str(),
+                &self.base_url,
             ))
         }
     }
