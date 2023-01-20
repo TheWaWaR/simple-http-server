@@ -93,7 +93,7 @@ jobs:
         with:
           use-cross: true
           command: build
-          args: --release --bin simple-http-server --locked --target=${{ matrix.TARGET }}
+          args: --release --bin simple-http-server --locked --target=${{ matrix.TARGET }} --no-default-features --features=rustls
       - uses: actions/upload-artifact@v2
         with:
           name: ${{ matrix.target }}-simple-http-server${{ env.BINARY_EXTENSION }}
