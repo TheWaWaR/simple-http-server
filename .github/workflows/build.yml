@@ -35,7 +35,7 @@ jobs:
       - uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-targets --all-features -- -F warnings
+          args: --all-targets --all-features -- -D warnings
 
   test:
     name: Unitest (${{ matrix.os }})
@@ -53,7 +53,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         env:
           RUST_BACKTRACE: full
-          RUSTFLAGS: -F warnings
+          RUSTFLAGS: -D warnings
         with:
           command: test
           args: --all --all-features
