@@ -80,7 +80,7 @@ jobs:
             target: x86_64-pc-windows-msvc
     env:
       BINARY_EXTENSION: ${{ endsWith(matrix.target, '-msvc') && '.exe' || '' }}
-      PATH_BINARY: ${{ github.workspace }}/target/release/simple-http-server${{ endsWith(matrix.target, '-msvc') && '.exe' || '' }}
+      PATH_BINARY: ${{ github.workspace }}/target/${{ matrix.TARGET }}/release/simple-http-server${{ matrix.EXTENSION }}${{ endsWith(matrix.target, '-msvc') && '.exe' || '' }}
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
