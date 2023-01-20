@@ -91,6 +91,7 @@ jobs:
           target: ${{ matrix.target }}
       - uses: actions-rs/cargo@v1
         with:
+          use-cross: true
           command: build
           args: --release --bin simple-http-server --locked
       - uses: actions/upload-artifact@v2
