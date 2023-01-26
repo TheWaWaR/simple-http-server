@@ -35,7 +35,7 @@ jobs:
       - uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-targets --all-features -- -F warnings
+          args: --all-targets --all-features -- -D warnings
 
   test:
     name: Unitest (${{ matrix.os }})
@@ -53,7 +53,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         env:
           RUST_BACKTRACE: full
-          RUSTFLAGS: -F warnings
+          RUSTFLAGS: -D warnings
         with:
           command: test
           args: --all --all-features
@@ -80,7 +80,7 @@ jobs:
             target: x86_64-pc-windows-msvc
     env:
       BINARY_EXTENSION: ${{ endsWith(matrix.target, '-msvc') && '.exe' || '' }}
-      PATH_BINARY: ${{ github.workspace }}/target/release/simple-http-server${{ endsWith(matrix.target, '-msvc') && '.exe' || '' }}
+      PATH_BINARY: ${{ github.workspace }}/target/${{ matrix.TARGET }}/release/simple-http-server${{ matrix.EXTENSION }}${{ endsWith(matrix.target, '-msvc') && '.exe' || '' }}
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
@@ -91,8 +91,9 @@ jobs:
           target: ${{ matrix.target }}
       - uses: actions-rs/cargo@v1
         with:
+          use-cross: true
           command: build
-          args: --release --bin simple-http-server --locked
+          args: --release --bin simple-http-server --locked --target=${{ matrix.TARGET }} --no-default-features --features=rustls
       - uses: actions/upload-artifact@v2
         with:
           name: ${{ matrix.target }}-simple-http-server${{ env.BINARY_EXTENSION }}
