@@ -246,8 +246,7 @@ fn main() {
     let color_red = Some(build_spec(Some(Color::Red), false));
     let addr = if IpAddr::from_str(&ip).unwrap().is_ipv4() {
         format!("{}:{}", ip, port)
-    }
-    else {
+    } else {
         format!("[{}]:{}", ip, port)
     };
     let compression_exts = compress
