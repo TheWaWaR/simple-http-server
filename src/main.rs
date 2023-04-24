@@ -377,7 +377,7 @@ fn main() {
     let mut server = Iron::new(chain);
     server.threads = threads as usize;
 
-    #[cfg(feature = "tls")]
+    #[cfg(feature = "native-tls")]
     let rv = if let Some(cert) = cert {
         use hyper_native_tls::NativeTlsServer;
         let ssl = NativeTlsServer::new(cert, certpass.unwrap_or("")).unwrap();
@@ -385,7 +385,7 @@ fn main() {
     } else {
         server.http(&addr)
     };
-    #[cfg(not(feature = "tls"))]
+    #[cfg(not(feature = "native-tls"))]
     let rv = if cert.is_some() {
         printer
             .println_err(
