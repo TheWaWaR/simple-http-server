@@ -33,7 +33,7 @@ use termcolor::{Color, ColorSpec};
 use color::{build_spec, Printer};
 use util::{
     enable_string, encode_link_path, error_io2iron, error_resp, now_string,
-    system_time_to_date_time, StringError, ROOT_LINK,
+    entry_size, system_time_to_date_time, StringError, ROOT_LINK,
 };
 
 use middlewares::{AuthChecker, CompressionHandler, RequestLogger};
@@ -599,6 +599,7 @@ impl MainHandler {
         path_prefix: &[String],
     ) -> IronResult<Response> {
         struct Entry {
+            path: PathBuf,
             filename: String,
             metadata: fs::Metadata,
         }
@@ -611,7 +612,9 @@ impl MainHandler {
         let mut entries = Vec::new();
         for entry_result in read_dir {
             let entry = entry_result.map_err(error_io2iron)?;
+
             entries.push(Entry {
+                path: entry.path(),
                 filename: entry.file_name().into_string().unwrap(),
                 metadata: entry.metadata().map_err(error_io2iron)?,
             });
@@ -741,7 +744,7 @@ impl MainHandler {
         }
 
         // Directory entries
-        for Entry { filename, metadata } in entries {
+        for Entry { path, filename, metadata } in entries {
             if self.index {
                 for fname in &["index.html", "index.htm"] {
                     if filename == *fname {
@@ -755,12 +758,10 @@ impl MainHandler {
             let file_modified = system_time_to_date_time(metadata.modified().unwrap())
                 .format("%Y-%m-%d %H:%M:%S")
                 .to_string();
+
             // * Entry.filesize
-            let file_size = if metadata.is_dir() {
-                "-".to_owned()
-            } else {
-                convert(metadata.len() as f64)
-            };
+            let file_size = convert(entry_size(path).unwrap() as f64);
+
             // * Entry.linkstyle
             let link_style = if metadata.is_dir() {
                 "style=\"font-weight: bold;\"".to_owned()
