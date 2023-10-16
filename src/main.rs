@@ -23,7 +23,6 @@ use iron_cors::CorsMiddleware;
 use lazy_static::lazy_static;
 use mime_guess as mime_types;
 use multipart::server::{Multipart, SaveResult};
-use open;
 use path_dedot::ParseDot;
 use percent_encoding::percent_decode;
 use pretty_bytes::converter::convert;
@@ -102,6 +101,12 @@ fn main() {
         .arg(clap::Arg::with_name("cors")
              .long("cors")
              .help("Enable CORS via the \"Access-Control-Allow-Origin\" header"))
+        .arg(clap::Arg::with_name("coop")
+             .long("coop")
+             .help("Add \"Cross-Origin-Opener-Policy\" HTTP header and set it to \"same-origin\""))
+        .arg(clap::Arg::with_name("coep")
+             .long("coep")
+             .help("Add \"Cross-Origin-Embedder-Policy\" HTTP header and set it to \"require-corp\""))
         .arg(clap::Arg::with_name("certpass").
              long("certpass")
              .takes_value(true)
@@ -222,6 +227,8 @@ fn main() {
     let cert = matches.value_of("cert");
     let certpass = matches.value_of("certpass");
     let cors = matches.is_present("cors");
+    let coop = matches.is_present("coop");
+    let coep = matches.is_present("coep");
     let ip = matches.value_of("ip").unwrap();
     let port = matches.value_of("port").unwrap().parse::<u16>().unwrap();
     let upload_size_limit = matches
@@ -257,7 +264,7 @@ fn main() {
 
         match open::that(&host) {
             Ok(_) => println!("Openning {} in default browser", &host),
-            Err(err) => eprintln!("Unable to open in default browser {}", err.to_string()),
+            Err(err) => eprintln!("Unable to open in default browser {}", err),
         }
     }
 
@@ -277,7 +284,7 @@ fn main() {
     if !silent {
         printer
             .println_out(
-                r#"     Index: {}, Cache: {}, Cors: {}, Range: {}, Sort: {}, Threads: {}
+                r#"     Index: {}, Cache: {}, Cors: {}, Coop: {}, Coep: {}, Range: {}, Sort: {}, Threads: {}
           Upload: {}, CSRF Token: {}
           Auth: {}, Compression: {}
          https: {}, Cert: {}, Cert-Password: {}
@@ -289,6 +296,8 @@ fn main() {
                     enable_string(index),
                     enable_string(cache),
                     enable_string(cors),
+                    enable_string(coop),
+                    enable_string(coep),
                     enable_string(range),
                     enable_string(sort),
                     threads.to_string(),
@@ -331,6 +340,8 @@ fn main() {
         upload,
         cache,
         range,
+        coop,
+        coep,
         redirect_to,
         sort,
         compress: compress
@@ -366,7 +377,7 @@ fn main() {
     let mut server = Iron::new(chain);
     server.threads = threads as usize;
 
-    #[cfg(feature = "tls")]
+    #[cfg(feature = "native-tls")]
     let rv = if let Some(cert) = cert {
         use hyper_native_tls::NativeTlsServer;
         let ssl = NativeTlsServer::new(cert, certpass.unwrap_or("")).unwrap();
@@ -374,7 +385,7 @@ fn main() {
     } else {
         server.http(&addr)
     };
-    #[cfg(not(feature = "tls"))]
+    #[cfg(not(feature = "native-tls"))]
     let rv = if cert.is_some() {
         printer
             .println_err(
@@ -411,6 +422,8 @@ struct MainHandler {
     upload: Option<Upload>,
     cache: bool,
     range: bool,
+    coop: bool,
+    coep: bool,
     redirect_to: Option<iron::Url>,
     sort: bool,
     compress: Option<Vec<String>>,
@@ -496,11 +509,7 @@ impl Handler for MainHandler {
 }
 
 impl MainHandler {
-    fn save_files(
-        &self,
-        req: &mut Request,
-        path: &PathBuf,
-    ) -> Result<(), (status::Status, String)> {
+    fn save_files(&self, req: &mut Request, path: &Path) -> Result<(), (status::Status, String)> {
         match Multipart::from_request(req) {
             Ok(mut multipart) => {
                 // Fetching all data and processing it.
@@ -552,7 +561,7 @@ impl MainHandler {
                         for field in files_fields {
                             let mut data = field.data.readable().unwrap();
                             let headers = &field.headers;
-                            let mut target_path = path.clone();
+                            let mut target_path = path.to_owned();
 
                             target_path.push(headers.filename.clone().unwrap());
                             if let Err(errno) = std::fs::File::create(target_path)
@@ -586,7 +595,7 @@ impl MainHandler {
     fn list_directory(
         &self,
         req: &mut Request,
-        fs_path: &PathBuf,
+        fs_path: &Path,
         path_prefix: &[String],
     ) -> IronResult<Response> {
         struct Entry {
@@ -595,7 +604,7 @@ impl MainHandler {
         }
 
         let mut resp = Response::with(status::Ok);
-        let mut fs_path = fs_path.clone();
+        let mut fs_path = fs_path.to_owned();
         let mut rows = Vec::new();
 
         let read_dir = fs::read_dir(&fs_path).map_err(error_io2iron)?;
@@ -611,8 +620,7 @@ impl MainHandler {
         // Breadcrumb navigation
         let breadcrumb = if !path_prefix.is_empty() {
             let mut breadcrumb = path_prefix.to_owned();
-            let mut bread_links: Vec<String> = Vec::new();
-            bread_links.push(breadcrumb.pop().unwrap());
+            let mut bread_links: Vec<String> = vec![breadcrumb.pop().unwrap()];
             while !breadcrumb.is_empty() {
                 bread_links.push(format!(
                     r#"<a href="/{link}/"><strong>{label}</strong></a>"#,
@@ -648,21 +656,13 @@ impl MainHandler {
             }
 
             if let Some(field) = sort_field {
-                if SORT_FIELDS
-                    .iter()
-                    .position(|s| *s == field.as_str())
-                    .is_none()
-                {
+                if !SORT_FIELDS.iter().any(|s| *s == field.as_str()) {
                     return Err(IronError::new(
                         StringError(format!("Unknown sort field: {}", field)),
                         status::BadRequest,
                     ));
                 }
-                if vec![ORDER_ASC, ORDER_DESC]
-                    .iter()
-                    .position(|s| *s == order)
-                    .is_none()
-                {
+                if ![ORDER_ASC, ORDER_DESC].iter().any(|s| *s == order) {
                     return Err(IronError::new(
                         StringError(format!("Unknown sort order: {}", order)),
                         status::BadRequest,
@@ -902,7 +902,18 @@ impl MainHandler {
                 let mime = mime_types::from_path(path).first_or_octet_stream();
                 resp.headers
                     .set_raw("content-type", vec![mime.to_string().into_bytes()]);
-
+                if self.coop {
+                    resp.headers.set_raw(
+                        "Cross-Origin-Opener-Policy",
+                        vec!["same-origin".to_string().into_bytes()],
+                    );
+                }
+                if self.coep {
+                    resp.headers.set_raw(
+                        "Cross-Origin-Embedder-Policy",
+                        vec!["require-corp".to_string().into_bytes()],
+                    );
+                }
                 if self.range {
                     let mut range = req.headers.get::<Range>();
 
@@ -910,11 +921,7 @@ impl MainHandler {
                         // [Reference]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/If-Match
                         // Check header::If-Match
                         if let Some(&IfMatch::Items(ref items)) = req.headers.get::<IfMatch>() {
-                            if items
-                                .iter()
-                                .position(|item| item.strong_eq(&etag))
-                                .is_none()
-                            {
+                            if !items.iter().any(|item| item.strong_eq(&etag)) {
                                 return Err(IronError::new(
                                     StringError("Etag not matched".to_owned()),
                                     status::RangeNotSatisfiable,
