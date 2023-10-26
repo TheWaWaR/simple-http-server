@@ -1018,7 +1018,7 @@ dependencies = [
 
 [[package]]
 name = "simple-http-server"
-version = "0.6.7"
+version = "0.6.8"
 dependencies = [
  "chrono",
  "clap",
