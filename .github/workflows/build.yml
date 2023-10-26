@@ -81,6 +81,7 @@ jobs:
     env:
       BINARY_EXTENSION: ${{ endsWith(matrix.target, '-msvc') && '.exe' || '' }}
       PATH_BINARY: ${{ github.workspace }}/target/${{ matrix.TARGET }}/release/simple-http-server${{ matrix.EXTENSION }}${{ endsWith(matrix.target, '-msvc') && '.exe' || '' }}
+      OPENSSL_STATIC: 1
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
@@ -89,6 +90,10 @@ jobs:
           override: true
           components: clippy
           target: ${{ matrix.target }}
+      - if: ${{ matrix.os == 'ubuntu-latest' }}
+        run: sudo apt update -y && sudo apt install libssl-dev -y
+      - if: ${{ matrix.os == 'macos-latest' }}
+        run: brew install openssl
       - uses: actions-rs/cargo@v1
         with:
           use-cross: true
