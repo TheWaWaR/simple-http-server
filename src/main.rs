@@ -842,8 +842,8 @@ impl MainHandler {
 
         resp.headers.set(headers::ContentType::html());
         if self.compress.is_some() {
-            if let Some(&AcceptEncoding(ref encodings)) = req.headers.get::<AcceptEncoding>() {
-                for &QualityItem { ref item, .. } in encodings {
+            if let Some(AcceptEncoding(encodings)) = req.headers.get::<AcceptEncoding>() {
+                for QualityItem { item, .. } in encodings {
                     if *item == Encoding::Deflate || *item == Encoding::Gzip {
                         resp.headers.set(ContentEncoding(vec![item.clone()]));
                     }
@@ -914,7 +914,7 @@ impl MainHandler {
                     if range.is_some() {
                         // [Reference]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/If-Match
                         // Check header::If-Match
-                        if let Some(&IfMatch::Items(ref items)) = req.headers.get::<IfMatch>() {
+                        if let Some(IfMatch::Items(items)) = req.headers.get::<IfMatch>() {
                             if !items.iter().any(|item| item.strong_eq(&etag)) {
                                 return Err(IronError::new(
                                     StringError("Etag not matched".to_owned()),
@@ -926,8 +926,8 @@ impl MainHandler {
 
                     // [Reference]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/If-Range
                     let matched_ifrange = match req.headers.get::<IfRange>() {
-                        Some(&IfRange::EntityTag(ref etag_ifrange)) => etag.weak_eq(etag_ifrange),
-                        Some(&IfRange::Date(HttpDate(ref date_ifrange))) => {
+                        Some(IfRange::EntityTag(etag_ifrange)) => etag.weak_eq(etag_ifrange),
+                        Some(IfRange::Date(HttpDate(date_ifrange))) => {
                             time::at(modified) <= *date_ifrange
                         }
                         None => true,
@@ -937,7 +937,7 @@ impl MainHandler {
                     }
 
                     match range {
-                        Some(&Range::Bytes(ref ranges)) => {
+                        Some(Range::Bytes(ranges)) => {
                             if let Some(range) = ranges.get(0) {
                                 let (offset, length) = match *range {
                                     ByteRangeSpec::FromTo(x, mut y) => {
@@ -1022,8 +1022,8 @@ impl MainHandler {
             if resp.status != Some(status::PartialContent)
                 && exts.iter().any(|ext| path_str.ends_with(ext))
             {
-                if let Some(&AcceptEncoding(ref encodings)) = req.headers.get::<AcceptEncoding>() {
-                    for &QualityItem { ref item, .. } in encodings {
+                if let Some(AcceptEncoding(encodings)) = req.headers.get::<AcceptEncoding>() {
+                    for QualityItem { item, .. } in encodings {
                         if *item == Encoding::Deflate || *item == Encoding::Gzip {
                             resp.headers.set(ContentEncoding(vec![item.clone()]));
                             break;

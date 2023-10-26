@@ -42,7 +42,7 @@ impl Deref for StringError {
     type Target = str;
 
     fn deref(&self) -> &Self::Target {
-        &*self.0
+        &self.0
     }
 }
 
@@ -133,7 +133,7 @@ pub fn system_time_to_date_time(t: SystemTime) -> DateTime<Local> {
             }
         }
     };
-    Local.timestamp(sec, nsec)
+    Local.timestamp_opt(sec, nsec).unwrap()
 }
 
 pub fn error_resp(s: status::Status, msg: &str) -> Response {

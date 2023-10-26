@@ -40,14 +40,14 @@ impl AfterMiddleware for CompressionHandler {
         }
 
         let mut encoding: Option<Encoding> = None;
-        if let Some(&ContentEncoding(ref objs)) = resp.headers.get::<ContentEncoding>() {
+        if let Some(ContentEncoding(objs)) = resp.headers.get::<ContentEncoding>() {
             encoding = objs
                 .iter()
                 .find(|obj| *obj == &Encoding::Deflate || *obj == &Encoding::Gzip)
                 .cloned();
         }
         if encoding.is_none() {
-            if let Some(&TransferEncoding(ref objs)) = resp.headers.get::<TransferEncoding>() {
+            if let Some(TransferEncoding(objs)) = resp.headers.get::<TransferEncoding>() {
                 encoding = objs
                     .iter()
                     .find(|obj| *obj == &Encoding::Deflate || *obj == &Encoding::Gzip)
