@@ -71,7 +71,7 @@ simple-http-server -h
 - [x] Specify running threads
 - [x] Specify root directory
 - [x] Pretty log
-- [x] Nginx like directory view (directory entries, link, filesize, modfiled date)
+- [x] Nginx like directory view (directory entries, link, filesize, modified date)
 - [x] Breadcrumb navigation
 - [x] (default enabled) Guess mime type
 - [x] (default enabled) HTTP cache control
@@ -84,7 +84,7 @@ simple-http-server -h
 - [x] (default disabled) Upload file
   - A CSRF token is generated when upload is enabled and must be sent as a parameter when uploading a file
 - [x] (default disabled) HTTP Basic Authentication (by username:password)
-- [x] Sort by: filename, filesize, modifled
+- [x] Sort by: filename, filesize, modified date
 - [x] HTTPS support
 - [x] Content-Encoding: gzip/deflate
 - [x] Added CORS headers support
