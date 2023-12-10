@@ -244,7 +244,11 @@ fn main() {
     let printer = Printer::new();
     let color_blue = Some(build_spec(Some(Color::Blue), false));
     let color_red = Some(build_spec(Some(Color::Red), false));
-    let addr = format!("{}:{}", ip, port);
+    let addr = if IpAddr::from_str(ip).unwrap().is_ipv4() {
+        format!("{}:{}", ip, port)
+    } else {
+        format!("[{}]:{}", ip, port)
+    };
     let compression_exts = compress
         .clone()
         .unwrap_or_default()
