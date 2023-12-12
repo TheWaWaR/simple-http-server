@@ -676,7 +676,7 @@ impl MainHandler {
                 let reverse = order == ORDER_DESC;
                 entries.sort_by(|a, b| {
                     let rv = match field.as_str() {
-                        "name" => a.filename.cmp(&b.filename),
+                        "name" => a.filename.to_lowercase().cmp(&b.filename.to_lowercase()),
                         "modified" => {
                             let a = a.metadata.modified().unwrap();
                             let b = b.metadata.modified().unwrap();
