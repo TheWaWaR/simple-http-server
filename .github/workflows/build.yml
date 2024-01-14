@@ -98,7 +98,7 @@ jobs:
         with:
           use-cross: true
           command: build
-          args: --release --bin simple-http-server --locked --target=${{ matrix.TARGET }}
+          args: --release --no-default-features --bin simple-http-server --locked --target=${{ matrix.TARGET }}
       - uses: actions/upload-artifact@v2
         with:
           name: ${{ matrix.target }}-simple-http-server${{ env.BINARY_EXTENSION }}
