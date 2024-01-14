@@ -581,9 +581,10 @@ impl MainHandler {
                         }
                         Ok(())
                     }
-                    SaveResult::Partial(_entries, reason) => {
-                        Err((status::InternalServerError, reason.unwrap_err().to_string()))
-                    }
+                    SaveResult::Partial(_entries, reason) => Err((
+                        status::InternalServerError,
+                        format!("save file failed: {:?}", reason),
+                    )),
                     SaveResult::Error(error) => {
                         Err((status::InternalServerError, error.to_string()))
                     }
@@ -942,7 +943,7 @@ impl MainHandler {
 
                     match range {
                         Some(Range::Bytes(ranges)) => {
-                            if let Some(range) = ranges.get(0) {
+                            if let Some(range) = ranges.first() {
                                 let (offset, length) = match *range {
                                     ByteRangeSpec::FromTo(x, mut y) => {
                                         // "x-y"
