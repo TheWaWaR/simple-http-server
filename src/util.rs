@@ -19,7 +19,7 @@ const FRAGMENT_ENCODE_SET: &AsciiSet = &percent_encoding::CONTROLS
     .add(b'`');
 /// https://url.spec.whatwg.org/#path-percent-encode-set
 const PATH_ENCODE_SET: &AsciiSet = &FRAGMENT_ENCODE_SET.add(b'#').add(b'?').add(b'{').add(b'}');
-const PATH_SEGMENT_ENCODE_SET: &AsciiSet = &PATH_ENCODE_SET.add(b'/').add(b'%');
+const PATH_SEGMENT_ENCODE_SET: &AsciiSet = &PATH_ENCODE_SET.add(b'/').add(b'%').add(b'[').add(b']');
 
 pub const ROOT_LINK: &str = r#"<a href="/"><strong>[Root]</strong></a>"#;
 
