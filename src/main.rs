@@ -924,7 +924,24 @@ impl MainHandler {
             }
             Method::Get => {
                 // Set mime type
-                let mime = mime_types::from_path(path).first_or_octet_stream();
+                //let mime = mime_types::from_path(path).first_or_octet_stream();
+                let mime = if cfg!(target_os = "linux") {
+                    mime_types::from_path(path).first_or_else(|| {
+                        if let Ok(cookie) = magic::Cookie::open(magic::flags::MIME_TYPE) {
+                            if cookie.load::<&str>(&[]).is_ok() {
+                                if let Ok(val) = cookie.file(&path) {
+                                   if val == "text/plain" { 
+                                        return mime_types::mime::TEXT_PLAIN;
+                                   }
+                                }
+                            }
+                        }
+                        mime_types::mime::APPLICATION_OCTET_STREAM
+                    })
+                } else {
+                    mime_types::from_path(path).first_or_octet_stream()
+                };
+                        
                 resp.headers
                     .set_raw("content-type", vec![mime.to_string().into_bytes()]);
                 if self.coop {
