@@ -32,8 +32,8 @@ use termcolor::{Color, ColorSpec};
 
 use color::{build_spec, Printer};
 use util::{
-    enable_string, encode_link_path, error_io2iron, error_resp, now_string,
-    system_time_to_date_time, StringError, ROOT_LINK,
+    enable_string, encode_link_path, error_io2iron, error_resp, now_string, root_link,
+    system_time_to_date_time, StringError,
 };
 
 use middlewares::{AuthChecker, CompressionHandler, RequestLogger};
@@ -209,6 +209,12 @@ fn main() {
              .long("open")
              .short("o")
              .help("Open the page in the default browser"))
+        .arg(clap::Arg::with_name("base-url")
+            .short("b")
+            .long("base-url")
+            .default_value("/")
+            .takes_value(true)
+            .help("Base URL to prepend in directory indexes. For reverse proxying. This prefix is supposed to be pre-stripped when reaching simple-http-server."))
         .get_matches();
 
     let root = matches
@@ -273,6 +279,7 @@ fn main() {
     }
 
     let silent = matches.is_present("silent");
+    let base_url: &str = matches.value_of("base-url").unwrap();
 
     let upload: Option<Upload> = if upload_arg {
         let token: String = thread_rng()
@@ -353,6 +360,7 @@ fn main() {
             .map(|exts| exts.iter().map(|s| format!(".{}", s)).collect()),
         try_file_404: try_file_404.map(PathBuf::from),
         upload_size_limit,
+        base_url: base_url.to_string(),
     });
     if cors {
         chain.link_around(CorsMiddleware::with_allow_any());
@@ -376,6 +384,7 @@ fn main() {
     if !silent {
         chain.link_after(RequestLogger {
             printer: Printer::new(),
+            base_url: base_url.to_string(),
         });
     }
     let mut server = Iron::new(chain);
@@ -433,6 +442,7 @@ struct MainHandler {
     compress: Option<Vec<String>>,
     try_file_404: Option<PathBuf>,
     upload_size_limit: u64,
+    base_url: String,
 }
 
 impl Handler for MainHandler {
@@ -475,9 +485,19 @@ impl Handler for MainHandler {
 
         if self.upload.is_some() && req.method == method::Post {
             if let Err((s, msg)) = self.save_files(req, &fs_path) {
-                return Ok(error_resp(s, &msg));
-            } else {
+                return Ok(error_resp(s, &msg, &self.base_url));
+            } else if self.base_url == "/" {
                 return Ok(Response::with((status::Found, Redirect(req.url.clone()))));
+            } else {
+                let mut inner_url: iron::url::Url = req.url.clone().into();
+                let mut path: &str = inner_url.path();
+                if path.starts_with('/') {
+                    path = &path[1..];
+                }
+                let new_path = format!("{}{}", self.base_url, path);
+                inner_url.set_path(&new_path);
+                let new_url = iron::Url::from_generic_url(inner_url).unwrap();
+                return Ok(Response::with((status::Found, Redirect(new_url))));
             }
         }
 
@@ -505,7 +525,7 @@ impl Handler for MainHandler {
                 .iter()
                 .map(|s| s.to_string_lossy().to_string())
                 .collect();
-            self.list_directory(req, &fs_path, &path_prefix)
+            self.list_directory(req, &fs_path, &path_prefix, &self.base_url[..])
         } else {
             self.send_file(req, &fs_path)
         }
@@ -602,6 +622,7 @@ impl MainHandler {
         req: &mut Request,
         fs_path: &Path,
         path_prefix: &[String],
+        base_url: &str,
     ) -> IronResult<Response> {
         struct Entry {
             filename: String,
@@ -628,16 +649,17 @@ impl MainHandler {
             let mut bread_links: Vec<String> = vec![breadcrumb.pop().unwrap()];
             while !breadcrumb.is_empty() {
                 bread_links.push(format!(
-                    r#"<a href="/{link}/"><strong>{label}</strong></a>"#,
+                    r#"<a href="{base_url}{link}/"><strong>{label}</strong></a>"#,
                     link = encode_link_path(&breadcrumb),
                     label = encode_minimal(&breadcrumb.pop().unwrap().to_owned()),
+                    base_url = base_url,
                 ));
             }
-            bread_links.push(ROOT_LINK.to_owned());
+            bread_links.push(root_link(base_url));
             bread_links.reverse();
             bread_links.join(" / ")
         } else {
-            ROOT_LINK.to_owned()
+            root_link(base_url)
         };
 
         // Sort links
@@ -709,16 +731,17 @@ impl MainHandler {
             format!(
                 r#"
 <tr>
-  <th><a href="/{link}?sort=name&order={name_order}">Name</a></th>
-  <th><a href="/{link}?sort=modified&order={modified_order}">Last modified</a></th>
-  <th><a href="/{link}?sort=size&order={size_order}">Size</a></th>
+  <th><a href="{base_url}{link}?sort=name&order={name_order}">Name</a></th>
+  <th><a href="{base_url}{link}?sort=modified&order={modified_order}">Last modified</a></th>
+  <th><a href="{base_url}{link}?sort=size&order={size_order}">Size</a></th>
 </tr>
 <tr><td style="border-top:1px dashed #BBB;" colspan="5"></td></tr>
 "#,
                 link = encode_link_path(&current_link),
                 name_order = order_labels.get("name").unwrap_or(&DEFAULT_ORDER),
                 modified_order = order_labels.get("modified").unwrap_or(&DEFAULT_ORDER),
-                size_order = order_labels.get("size").unwrap_or(&DEFAULT_ORDER)
+                size_order = order_labels.get("size").unwrap_or(&DEFAULT_ORDER),
+                base_url = base_url,
             )
         } else {
             "".to_owned()
@@ -734,12 +757,13 @@ impl MainHandler {
             rows.push(format!(
                 r#"
 <tr>
-  <td><a href="/{link}"><strong>[Up]</strong></a></td>
+  <td><a href="{base_url}{link}"><strong>[Up]</strong></a></td>
   <td></td>
   <td></td>
 </tr>
 "#,
-                link = encode_link_path(&link)
+                link = encode_link_path(&link),
+                base_url = base_url,
             ));
         } else {
             rows.push(r#"<tr><td>&nbsp;</td></tr>"#.to_owned());
@@ -789,7 +813,7 @@ impl MainHandler {
             rows.push(format!(
                 r#"
 <tr>
-  <td><a {linkstyle} href="/{link}">{label}</a></td>
+  <td><a {linkstyle} href="{base_url}{link}">{label}</a></td>
   <td style="color:#888;">[{modified}]</td>
   <td><bold>{filesize}</bold></td>
 </tr>
@@ -798,7 +822,8 @@ impl MainHandler {
                 link = encode_link_path(&link),
                 label = encode_minimal(&file_name_label),
                 modified = file_modified,
-                filesize = file_size
+                filesize = file_size,
+                base_url = base_url,
             ));
         }
 
@@ -806,14 +831,15 @@ impl MainHandler {
         let upload_form = if self.upload.is_some() {
             format!(
                 r#"
-<form style="margin-top:1em; margin-bottom:1em;" action="/{path}" method="POST" enctype="multipart/form-data">
+<form style="margin-top:1em; margin-bottom:1em;" action="{base_url}{path}" method="POST" enctype="multipart/form-data">
   <input type="file" name="files" accept="*" multiple />
   <input type="hidden" name="csrf" value="{csrf}"/>
   <input type="submit" value="Upload" />
 </form>
 "#,
                 path = encode_link_path(path_prefix),
-                csrf = self.upload.as_ref().unwrap().csrf_token
+                csrf = self.upload.as_ref().unwrap().csrf_token,
+                base_url = base_url,
             )
         } else {
             "".to_owned()
