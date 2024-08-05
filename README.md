@@ -43,6 +43,18 @@ OPTIONS:
 
 ```
 
+### Website hosting example
+
+- Point the program to the website folder
+- The Home page of the website should be available on the root of the folder
+- The Home page should be named as `index.html`
+
+```sh
+simple-http-server -i -p 80 folder-name
+```
+
+This command will use the port 80 (the certified port for HTTP servers), you can change as you wish.
+
 # Installation
 
 ### Download binary 
