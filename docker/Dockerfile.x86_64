@@ -2,7 +2,7 @@
 # LICENS: BSD 2-Clause "Simplified" License
 #    please see https://github.com/k4yt3x/simple-http-server/blob/master/LICENSE for more details
 
-FROM rust:1.61-alpine3.15 as builder
+FROM rust:1.79-alpine3.20 as builder
 # branch name or tag
 ARG BRANCH
 RUN apk add --no-cache --virtual .build-deps git make musl-dev openssl-dev perl pkgconfig \
