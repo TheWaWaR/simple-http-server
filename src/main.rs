@@ -18,6 +18,7 @@ use iron::headers::{AcceptEncoding, ContentEncoding, Encoding, QualityItem};
 use iron::method;
 use iron::modifiers::Redirect;
 use iron::status;
+use iron::status::Status;
 use iron::{Chain, Handler, Iron, IronError, IronResult, Request, Response, Set};
 use iron_cors::CorsMiddleware;
 use lazy_static::lazy_static;
@@ -509,7 +510,7 @@ impl Handler for MainHandler {
                     io::ErrorKind::NotFound => {
                         if let Some(ref p) = self.try_file_404 {
                             if Some(true) == fs::metadata(p).ok().map(|meta| meta.is_file()) {
-                                return self.send_file(req, p);
+                                return self.send_file(req, p, Some(status::NotFound));
                             }
                         }
                         status::NotFound
@@ -527,7 +528,7 @@ impl Handler for MainHandler {
                 .collect();
             self.list_directory(req, &fs_path, &path_prefix, &self.base_url[..])
         } else {
-            self.send_file(req, &fs_path)
+            self.send_file(req, &fs_path, None)
         }
     }
 }
@@ -776,7 +777,7 @@ impl MainHandler {
                     if filename == *fname {
                         // Automatic render index page
                         fs_path.push(filename);
-                        return self.send_file(req, &fs_path);
+                        return self.send_file(req, &fs_path, None);
                     }
                 }
             }
@@ -884,7 +885,12 @@ impl MainHandler {
         Ok(resp)
     }
 
-    fn send_file<P: AsRef<Path>>(&self, req: &Request, path: P) -> IronResult<Response> {
+    fn send_file<P: AsRef<Path>>(
+        &self,
+        req: &Request,
+        path: P,
+        status: Option<Status>,
+    ) -> IronResult<Response> {
         use filetime::FileTime;
         use iron::headers::{
             AcceptRanges, ByteRangeSpec, ContentLength, ContentRange, ContentRangeSpec, ETag,
@@ -907,7 +913,7 @@ impl MainHandler {
             modified.nsec
         ));
 
-        let mut resp = Response::with(status::Ok);
+        let mut resp = Response::with(status.unwrap_or(status::Ok));
         if self.range {
             resp.headers.set(AcceptRanges(vec![RangeUnit::Bytes]));
         }
