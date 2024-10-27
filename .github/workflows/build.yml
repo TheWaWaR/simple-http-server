@@ -99,13 +99,13 @@ jobs:
           use-cross: true
           command: build
           args: --release --no-default-features --bin simple-http-server --locked --target=${{ matrix.TARGET }}
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}-simple-http-server${{ env.BINARY_EXTENSION }}
           path: ${{ env.PATH_BINARY }}
       - name: Evaluate shasum
         run: echo -n $(shasum -ba 256 ${{ env.PATH_BINARY }} | cut -d " " -f 1) > ${{ env.PATH_BINARY }}.sha256
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}-simple-http-server.sha256
           path: ${{ env.PATH_BINARY }}.sha256
