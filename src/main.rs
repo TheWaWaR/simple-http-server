@@ -887,14 +887,13 @@ impl MainHandler {
     fn send_file<P: AsRef<Path>>(&self, req: &Request, path: P) -> IronResult<Response> {
         use filetime::FileTime;
         use iron::headers::{
-            AcceptRanges, ByteRangeSpec, ContentLength, ContentRange, ContentRangeSpec,
-            ContentType, ETag, EntityTag, IfMatch, IfRange, Range, RangeUnit,
+            AcceptRanges, ByteRangeSpec, ContentLength, ContentRange, ContentRangeSpec, ETag,
+            EntityTag, IfMatch, IfRange, Range, RangeUnit,
         };
         use iron::headers::{
             CacheControl, CacheDirective, HttpDate, IfModifiedSince, LastModified,
         };
         use iron::method::Method;
-        use iron::mime::{Mime, SubLevel, TopLevel};
 
         let path = path.as_ref();
         let metadata = fs::metadata(path).map_err(error_io2iron)?;
@@ -912,33 +911,25 @@ impl MainHandler {
         if self.range {
             resp.headers.set(AcceptRanges(vec![RangeUnit::Bytes]));
         }
+        // Set mime type
+        let mime = mime_types::from_path(path).first_or_octet_stream();
+        resp.headers
+            .set_raw("content-type", vec![mime.to_string().into_bytes()]);
+        if self.coop {
+            resp.headers.set_raw(
+                "Cross-Origin-Opener-Policy",
+                vec!["same-origin".to_string().into_bytes()],
+            );
+        }
+        if self.coep {
+            resp.headers.set_raw(
+                "Cross-Origin-Embedder-Policy",
+                vec!["require-corp".to_string().into_bytes()],
+            );
+        }
         match req.method {
-            Method::Head => {
-                let content_type = req
-                    .headers
-                    .get::<ContentType>()
-                    .cloned()
-                    .unwrap_or_else(|| ContentType(Mime(TopLevel::Text, SubLevel::Plain, vec![])));
-                resp.headers.set(content_type);
-                resp.headers.set(ContentLength(metadata.len()));
-            }
+            Method::Head => resp.headers.set(ContentLength(metadata.len())),
             Method::Get => {
-                // Set mime type
-                let mime = mime_types::from_path(path).first_or_octet_stream();
-                resp.headers
-                    .set_raw("content-type", vec![mime.to_string().into_bytes()]);
-                if self.coop {
-                    resp.headers.set_raw(
-                        "Cross-Origin-Opener-Policy",
-                        vec!["same-origin".to_string().into_bytes()],
-                    );
-                }
-                if self.coep {
-                    resp.headers.set_raw(
-                        "Cross-Origin-Embedder-Policy",
-                        vec!["require-corp".to_string().into_bytes()],
-                    );
-                }
                 if self.range {
                     let mut range = req.headers.get::<Range>();
 
