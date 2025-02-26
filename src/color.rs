@@ -25,15 +25,6 @@ impl Printer {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn print_out(
-        &self,
-        fmtstr: &str,
-        args: &[(&str, &Option<ColorSpec>)],
-    ) -> Result<(), StringError> {
-        self.print(&self.outwriter, fmtstr, args, false)
-    }
-
     pub fn println_out(
         &self,
         fmtstr: &str,
@@ -42,7 +33,6 @@ impl Printer {
         self.print(&self.outwriter, fmtstr, args, true)
     }
 
-    #[allow(dead_code)]
     pub fn print_err(
         &self,
         fmtstr: &str,
