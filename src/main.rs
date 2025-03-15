@@ -921,6 +921,15 @@ impl MainHandler {
         let mime = mime_types::from_path(path).first_or_octet_stream();
         resp.headers
             .set_raw("content-type", vec![mime.to_string().into_bytes()]);
+
+        // 修复中文乱码问题：对于文本类型的文件，明确指定 UTF-8 编码
+        let content_type = if mime.type_() == "text" {
+            format!("{}; charset=utf-8", mime)
+        } else {
+            mime.to_string()
+        };
+        resp.headers.set_raw("content-type", vec![content_type.into_bytes()]);
+
         if self.coop {
             resp.headers.set_raw(
                 "Cross-Origin-Opener-Policy",
