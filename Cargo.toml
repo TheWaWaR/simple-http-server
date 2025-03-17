@@ -37,3 +37,12 @@ path-dedot = "1"
 default = ["native-tls"]
 only-openssl = ["native-tls", "openssl"]
 native-tls = ["hyper-native-tls"]
+
+
+[profile.release]
+opt-level = 3  # 最高优化级别
+lto = true      # 链接时优化
+codegen-units = 1 # 尽可能合并代码生成单元
+panic = 'abort' # 恐慌时立即终止，而不是展开（减小二进制大小）
+strip = true  # 从二进制文件中删除调试信息
+
