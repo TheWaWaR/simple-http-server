@@ -923,6 +923,8 @@ impl MainHandler {
         // Fix messy code for non english issue: explicitly specify UTF-8 encoding for text files
         let content_type = if mime.type_() == "text" {
             format!("{}; charset=utf-8", mime)
+        } else if mime.type_() == "application" && mime.subtype() == "x-yaml" {
+            format!("text/yaml; charset=utf-8")
         } else {
             mime.to_string()
         };
