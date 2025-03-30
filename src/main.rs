@@ -465,10 +465,9 @@ impl Handler for MainHandler {
                     .decode_utf8()
                     .map(|path| PathBuf::from(&*path))
                     .map_err(|_err| {
-                        IronError::new(
-                            StringError(format!("invalid path: {}", s)),
-                            status::BadRequest,
-                        )
+                        let err_msg = format!("invalid path: {}", s);
+                        println!("[BadRequest]: {err_msg}");
+                        IronError::new(StringError(err_msg), status::BadRequest)
                     })
             })
             .collect::<Result<Vec<PathBuf>, _>>()?
@@ -551,10 +550,9 @@ impl MainHandler {
                         {
                             Some(field) => field,
                             None => {
-                                return Err((
-                                    status::BadRequest,
-                                    String::from("csrf parameter not provided"),
-                                ))
+                                let err_msg = String::from("csrf parameter not provided");
+                                println!("[BadRequest]: {err_msg}");
+                                return Err((status::BadRequest, err_msg));
                             }
                         };
 
@@ -569,17 +567,18 @@ impl MainHandler {
 
                         // Check if they match
                         if self.upload.as_ref().unwrap().csrf_token != token {
-                            return Err((
-                                status::BadRequest,
-                                String::from("csrf token does not match"),
-                            ));
+                            let err_msg = String::from("csrf token does not match");
+                            println!("[BadRequest]: {err_msg}");
+                            return Err((status::BadRequest, err_msg));
                         }
 
                         // Grab all the fields named files
                         let files_fields = match entries.fields.get("files") {
                             Some(fields) => fields,
                             None => {
-                                return Err((status::BadRequest, String::from("no files provided")))
+                                let err_msg = String::from("no files provided");
+                                println!("[BadRequest]: {err_msg}");
+                                return Err((status::BadRequest, err_msg));
                             }
                         };
 
@@ -588,7 +587,9 @@ impl MainHandler {
                             let headers = &field.headers;
                             let mut target_path = path.to_owned();
 
-                            target_path.push(headers.filename.clone().unwrap());
+                            let raw_filename = headers.filename.clone().unwrap();
+                            let filename = Path::new(&raw_filename).file_name().unwrap();
+                            target_path.push(filename);
                             if let Err(errno) = std::fs::File::create(target_path)
                                 .and_then(|mut file| io::copy(&mut data, &mut file))
                             {
@@ -611,10 +612,11 @@ impl MainHandler {
                     }
                 }
             }
-            Err(_) => Err((
-                status::BadRequest,
-                "The request is not multipart".to_owned(),
-            )),
+            Err(_) => {
+                let err_msg = "The request is not multipart".to_owned();
+                println!("[BadRequest]: {err_msg}");
+                Err((status::BadRequest, err_msg))
+            }
         }
     }
 
@@ -685,16 +687,14 @@ impl MainHandler {
 
             if let Some(field) = sort_field {
                 if !SORT_FIELDS.iter().any(|s| *s == field.as_str()) {
-                    return Err(IronError::new(
-                        StringError(format!("Unknown sort field: {}", field)),
-                        status::BadRequest,
-                    ));
+                    let err_msg = format!("Unknown sort field: {}", field);
+                    println!("[BadRequest]: {err_msg}");
+                    return Err(IronError::new(StringError(err_msg), status::BadRequest));
                 }
                 if ![ORDER_ASC, ORDER_DESC].iter().any(|s| *s == order) {
-                    return Err(IronError::new(
-                        StringError(format!("Unknown sort order: {}", order)),
-                        status::BadRequest,
-                    ));
+                    let err_msg = format!("Unknown sort order: {}", order);
+                    println!("[BadRequest]: {err_msg}");
+                    return Err(IronError::new(StringError(err_msg), status::BadRequest));
                 }
 
                 let reverse = order == ORDER_DESC;
