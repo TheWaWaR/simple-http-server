@@ -24,7 +24,7 @@ hyper-native-tls = { version = "0.3.0", optional = true }
 openssl = { version = "0.10", features = ["vendored"], optional = true }
 rustls = { version = "0.20", optional = true }
 mime_guess = "2.0"
-open = "1"
+open = "5"
 # Iron crates
 iron = "0.6.1"
 iron-cors = "0.8.0"
