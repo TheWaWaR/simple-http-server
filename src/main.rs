@@ -21,7 +21,6 @@ use iron::status;
 use iron::status::Status;
 use iron::{Chain, Handler, Iron, IronError, IronResult, Request, Response, Set};
 use iron_cors::CorsMiddleware;
-use lazy_static::lazy_static;
 use mime_guess as mime_types;
 use multipart::server::{Multipart, SaveResult};
 use path_dedot::ParseDot;
@@ -42,10 +41,7 @@ use middlewares::{AuthChecker, CompressionHandler, RequestLogger};
 const ORDER_ASC: &str = "asc";
 const ORDER_DESC: &str = "desc";
 const DEFAULT_ORDER: &str = ORDER_DESC;
-
-lazy_static! {
-    static ref SORT_FIELDS: Vec<&'static str> = vec!["name", "modified", "size"];
-}
+const SORT_FIELDS: &[&str] = &["name", "modified", "size"];
 
 fn main() {
     let matches = clap::App::new("Simple HTTP(s) Server")
@@ -252,20 +248,20 @@ fn main() {
     let color_blue = Some(build_spec(Some(Color::Blue), false));
     let color_red = Some(build_spec(Some(Color::Red), false));
     let addr = if IpAddr::from_str(ip).unwrap().is_ipv4() {
-        format!("{}:{}", ip, port)
+        format!("{ip}:{port}")
     } else {
-        format!("[{}]:{}", ip, port)
+        format!("[{ip}]:{port}")
     };
     let compression_exts = compress
         .clone()
         .unwrap_or_default()
         .iter()
-        .map(|s| format!("*.{}", s))
+        .map(|s| format!("*.{s}"))
         .collect::<Vec<String>>();
     let compression_string = if compression_exts.is_empty() {
         "disabled".to_owned()
     } else {
-        format!("{:?}", compression_exts)
+        format!("{compression_exts:?}")
     };
 
     let open = matches.is_present("open");
@@ -275,7 +271,7 @@ fn main() {
 
         match open::that(&host) {
             Ok(_) => println!("Openning {} in default browser", &host),
-            Err(err) => eprintln!("Unable to open in default browser {}", err),
+            Err(err) => eprintln!("Unable to open in default browser {err}"),
         }
     }
 
@@ -358,7 +354,7 @@ fn main() {
         sort,
         compress: compress
             .clone()
-            .map(|exts| exts.iter().map(|s| format!(".{}", s)).collect()),
+            .map(|exts| exts.iter().map(|s| format!(".{s}")).collect()),
         try_file_404: try_file_404.map(PathBuf::from),
         upload_size_limit,
         base_url: base_url.to_string(),
@@ -465,7 +461,7 @@ impl Handler for MainHandler {
                     .decode_utf8()
                     .map(|path| PathBuf::from(&*path))
                     .map_err(|_err| {
-                        let err_msg = format!("invalid path: {}", s);
+                        let err_msg = format!("invalid path: {s}");
                         println!("[BadRequest]: {err_msg}");
                         IronError::new(StringError(err_msg), status::BadRequest)
                     })
@@ -595,7 +591,7 @@ impl MainHandler {
                             {
                                 return Err((
                                     status::InternalServerError,
-                                    format!("Copy file failed: {}", errno),
+                                    format!("Copy file failed: {errno}"),
                                 ));
                             } else {
                                 println!("  >> File saved: {}", headers.filename.clone().unwrap());
@@ -605,7 +601,7 @@ impl MainHandler {
                     }
                     SaveResult::Partial(_entries, reason) => Err((
                         status::InternalServerError,
-                        format!("save file failed: {:?}", reason),
+                        format!("save file failed: {reason:?}"),
                     )),
                     SaveResult::Error(error) => {
                         Err((status::InternalServerError, error.to_string()))
@@ -686,13 +682,13 @@ impl MainHandler {
             }
 
             if let Some(field) = sort_field {
-                if !SORT_FIELDS.iter().any(|s| *s == field.as_str()) {
-                    let err_msg = format!("Unknown sort field: {}", field);
+                if !SORT_FIELDS.contains(&field.as_str()) {
+                    let err_msg = format!("Unknown sort field: {field}");
                     println!("[BadRequest]: {err_msg}");
                     return Err(IronError::new(StringError(err_msg), status::BadRequest));
                 }
                 if ![ORDER_ASC, ORDER_DESC].iter().any(|s| *s == order) {
-                    let err_msg = format!("Unknown sort order: {}", order);
+                    let err_msg = format!("Unknown sort order: {order}");
                     println!("[BadRequest]: {err_msg}");
                     return Err(IronError::new(StringError(err_msg), status::BadRequest));
                 }
@@ -972,10 +968,9 @@ impl MainHandler {
                                         // "x-y"
                                         if x >= metadata.len() || x > y {
                                             return Err(IronError::new(
-                                                StringError(format!(
-                                                    "Invalid range(x={}, y={})",
-                                                    x, y
-                                                )),
+                                                StringError(
+                                                    format!("Invalid range(x={x}, y={y})",),
+                                                ),
                                                 status::RangeNotSatisfiable,
                                             ));
                                         }

@@ -12,7 +12,6 @@ edition = "2018"
 [dependencies]
 clap = "2.33.0"
 termcolor = "1.0.5"
-lazy_static = "1.4.0"
 time = "0.1.42"
 chrono = "0.4.9"
 flate2 = "1.0.11"

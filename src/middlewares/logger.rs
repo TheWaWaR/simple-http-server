@@ -1,19 +1,20 @@
 use std::ops::Deref;
+use std::sync::LazyLock;
 
 use iron::status;
 use iron::{AfterMiddleware, IronError, IronResult, Request, Response};
-use lazy_static::lazy_static;
 use percent_encoding::percent_decode;
 use termcolor::{Color, ColorSpec};
 
 use crate::color::{build_spec, Printer};
 use crate::util::{error_resp, now_string};
 
-lazy_static! {
-    static ref C_BOLD_GREEN: Option<ColorSpec> = Some(build_spec(Some(Color::Green), true));
-    static ref C_BOLD_YELLOW: Option<ColorSpec> = Some(build_spec(Some(Color::Yellow), true));
-    static ref C_BOLD_RED: Option<ColorSpec> = Some(build_spec(Some(Color::Red), true));
-}
+static C_BOLD_GREEN: LazyLock<Option<ColorSpec>> =
+    LazyLock::new(|| Some(build_spec(Some(Color::Green), true)));
+static C_BOLD_YELLOW: LazyLock<Option<ColorSpec>> =
+    LazyLock::new(|| Some(build_spec(Some(Color::Yellow), true)));
+static C_BOLD_RED: LazyLock<Option<ColorSpec>> =
+    LazyLock::new(|| Some(build_spec(Some(Color::Red), true)));
 
 pub struct RequestLogger {
     pub printer: Printer,

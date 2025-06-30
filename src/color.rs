@@ -80,8 +80,7 @@ impl Printer {
                                 count += 1;
                             } else {
                                 return Err(StringError(format!(
-                                    "Not enough arguments (need more than {})",
-                                    count
+                                    "Not enough arguments (need more than {count})",
                                 )));
                             }
                         }

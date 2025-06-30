@@ -22,10 +22,7 @@ const PATH_ENCODE_SET: &AsciiSet = &FRAGMENT_ENCODE_SET.add(b'#').add(b'?').add(
 const PATH_SEGMENT_ENCODE_SET: &AsciiSet = &PATH_ENCODE_SET.add(b'/').add(b'%').add(b'[').add(b']');
 
 pub fn root_link(baseurl: &str) -> String {
-    format!(
-        r#"<a href="{baseurl}"><strong>[Root]</strong></a>"#,
-        baseurl = baseurl,
-    )
+    format!(r#"<a href="{baseurl}"><strong>[Root]</strong></a>"#)
 }
 
 #[derive(Debug)]
@@ -70,55 +67,6 @@ pub fn error_io2iron(err: io::Error) -> IronError {
     };
     IronError::new(err, status)
 }
-
-/* TODO: may not used
-
-use iron::headers::{Range, ByteRangeSpec};
-
-#[allow(dead_code)]
-pub fn parse_range(ranges: &Vec<ByteRangeSpec>, total: u64)
-                   -> Result<Option<(u64, u64)>, IronError> {
-    if let Some(range) = ranges.get(0) {
-        let (offset, length) = match range {
-            &ByteRangeSpec::FromTo(x, mut y) => { // "x-y"
-                if x >= total || x > y {
-                    return Err(IronError::new(
-                        StringError(format!("Invalid range(x={}, y={})", x, y)),
-                        status::RangeNotSatisfiable
-                    ));
-                }
-                if y >= total {
-                    y = total - 1;
-                }
-                (x, y - x + 1)
-            }
-            &ByteRangeSpec::AllFrom(x) => { // "x-"
-                if x >= total {
-                    return Err(IronError::new(
-                        StringError(format!(
-                            "Range::AllFrom to large (x={}), Content-Length: {})",
-                            x, total)),
-                        status::RangeNotSatisfiable
-                    ));
-                }
-                (x, total - x)
-            }
-            &ByteRangeSpec::Last(mut x) => { // "-x"
-                if x > total {
-                    x = total;
-                }
-                (total - x, x)
-            }
-        };
-        Ok(Some((offset, length)))
-    } else {
-        return Err(IronError::new(
-            StringError("Empty range set".to_owned()),
-            status::RangeNotSatisfiable
-        ));
-    }
-}
-*/
 
 pub fn now_string() -> String {
     Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
