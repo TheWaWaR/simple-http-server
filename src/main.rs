@@ -591,12 +591,11 @@ impl MainHandler {
                                 }
                             };
                             
-                            let filename = match Path::new(&raw_filename).file_name() {
-                                Some(name) => name,
-                                None => {
-                                    println!("[Warning]: Invalid filename: {}", raw_filename);
-                                    continue;
-                                }
+                            let filename = if let Some(name) = Path::new(&raw_filename).file_name() {
+                                name
+                            } else {
+                                println!("[Warning]: Invalid filename: {}", raw_filename);
+                                continue;
                             };
                             
                             target_path.push(filename);
