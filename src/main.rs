@@ -583,8 +583,22 @@ impl MainHandler {
                             let headers = &field.headers;
                             let mut target_path = path.to_owned();
 
-                            let raw_filename = headers.filename.clone().unwrap();
-                            let filename = Path::new(&raw_filename).file_name().unwrap();
+                            let raw_filename = match headers.filename.clone() {
+                                Some(name) => name,
+                                None => {
+                                    println!("[Warning]: Skipping field with no filename");
+                                    continue;
+                                }
+                            };
+                            
+                            let filename = match Path::new(&raw_filename).file_name() {
+                                Some(name) => name,
+                                None => {
+                                    println!("[Warning]: Invalid filename: {}", raw_filename);
+                                    continue;
+                                }
+                            };
+                            
                             target_path.push(filename);
                             if let Err(errno) = std::fs::File::create(target_path)
                                 .and_then(|mut file| io::copy(&mut data, &mut file))
@@ -594,7 +608,7 @@ impl MainHandler {
                                     format!("Copy file failed: {errno}"),
                                 ));
                             } else {
-                                println!("  >> File saved: {}", headers.filename.clone().unwrap());
+                                println!("  >> File saved: {}", raw_filename);
                             }
                         }
                         Ok(())
