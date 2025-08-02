@@ -583,12 +583,11 @@ impl MainHandler {
                             let headers = &field.headers;
                             let mut target_path = path.to_owned();
 
-                            let raw_filename = match headers.filename.clone() {
-                                Some(name) => name,
-                                None => {
-                                    println!("[Warning]: Skipping field with no filename");
-                                    continue;
-                                }
+                            let raw_filename = if let Some(name) = headers.filename.clone() {
+                                name
+                            } else {
+                                println!("[Warning]: Skipping field with no filename");
+                                continue;
                             };
                             
                             let filename = if let Some(name) = Path::new(&raw_filename).file_name() {
@@ -1086,3 +1085,6 @@ impl MainHandler {
         Ok(resp)
     }
 }
+
+
+
