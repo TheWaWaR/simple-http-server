@@ -583,17 +583,13 @@ impl MainHandler {
                             let headers = &field.headers;
                             let mut target_path = path.to_owned();
 
-                            let raw_filename = if let Some(name) = headers.filename.clone() {
-                                name
-                            } else {
+                            let Some(raw_filename) = headers.filename.clone() else {
                                 println!("[Warning]: Skipping field with no filename");
                                 continue;
                             };
                             
-                            let filename = if let Some(name) = Path::new(&raw_filename).file_name() {
-                                name
-                            } else {
-                                println!("[Warning]: Invalid filename: {}", raw_filename);
+                            let Some(filename) = Path::new(&raw_filename).file_name() else {
+                                println!("[Warning]: Invalid filename: {raw_filename}");
                                 continue;
                             };
                             
