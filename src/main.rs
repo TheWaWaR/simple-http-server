@@ -587,12 +587,12 @@ impl MainHandler {
                                 println!("[Warning]: Skipping field with no filename");
                                 continue;
                             };
-                            
+
                             let Some(filename) = Path::new(&raw_filename).file_name() else {
                                 println!("[Warning]: Invalid filename: {raw_filename}");
                                 continue;
                             };
-                            
+
                             target_path.push(filename);
                             if let Err(errno) = std::fs::File::create(target_path)
                                 .and_then(|mut file| io::copy(&mut data, &mut file))
