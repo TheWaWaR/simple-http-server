@@ -602,7 +602,7 @@ impl MainHandler {
                                     format!("Copy file failed: {errno}"),
                                 ));
                             } else {
-                                println!("  >> File saved: {}", raw_filename);
+                                println!("  >> File saved: {raw_filename}");
                             }
                         }
                         Ok(())
