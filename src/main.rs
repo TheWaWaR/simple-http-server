@@ -857,7 +857,13 @@ impl MainHandler {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <style> a {{ text-decoration:none; }} </style>
+  <meta name="color-scheme" content="dark light" />
+  <style> 
+    a {{ text-decoration:none; }} 
+    :root {{ --filter: none; }}
+    body {{ filter: var(--filter); }}
+    @media (prefers-color-scheme: dark) {{ --filter: invert(100%); }}
+  </style>
 </head>
 <body>
   {upload_form}
