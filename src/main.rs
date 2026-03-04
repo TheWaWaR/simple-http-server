@@ -68,6 +68,10 @@ fn main() {
              .short("u")
              .long("upload")
              .help("Enable upload files. (multiple select) (CSRF token required)"))
+        .arg(clap::Arg::with_name("csrf")
+             .long("csrf")
+             .takes_value(true)
+             .help("Use a custom CSRF token for upload. WARNING: this is dangerous as the token is passed via the command line and may be visible in process listings"))
         .arg(clap::Arg::with_name("redirect").long("redirect")
              .takes_value(true)
              .validator(|url_string| iron::Url::parse(url_string.as_str()).map(|_| ()))
@@ -279,11 +283,16 @@ fn main() {
     let base_url: &str = matches.value_of("base-url").unwrap();
 
     let upload: Option<Upload> = if upload_arg {
-        let token: String = thread_rng()
-            .sample_iter(&Alphanumeric)
-            .take(10)
-            .map(char::from)
-            .collect();
+        let token: String = if let Some(custom_token) = matches.value_of("csrf") {
+            eprintln!("WARNING: Using a custom CSRF token is dangerous. The token is visible in process listings and shell history. Consider using the auto-generated token instead.");
+            custom_token.to_string()
+        } else {
+            thread_rng()
+                .sample_iter(&Alphanumeric)
+                .take(10)
+                .map(char::from)
+                .collect()
+        };
         Some(Upload { csrf_token: token })
     } else {
         None
@@ -310,12 +319,7 @@ fn main() {
                     enable_string(sort),
                     threads.to_string(),
                     enable_string(upload_arg),
-                    (if upload.is_some() {
-                        upload.as_ref().unwrap().csrf_token.as_str()
-                    } else {
-                        ""
-                    })
-                    .to_string(),
+                    upload.as_ref().map(|v|v.csrf_token.as_str()).unwrap_or("").to_string(),
                     auth.unwrap_or("disabled").to_string(),
                     compression_string,
                     (if cert.is_some() {
@@ -833,22 +837,18 @@ impl MainHandler {
         }
 
         // Optional upload form
-        let upload_form = if self.upload.is_some() {
-            format!(
-                r#"
+        let upload_form = self.upload.as_ref().map(|upload| format!(
+            r#"
 <form style="margin-top:1em; margin-bottom:1em;" action="{base_url}{path}" method="POST" enctype="multipart/form-data">
   <input type="file" name="files" accept="*" multiple />
   <input type="hidden" name="csrf" value="{csrf}"/>
   <input type="submit" value="Upload" />
 </form>
 "#,
-                path = encode_link_path(path_prefix),
-                csrf = self.upload.as_ref().unwrap().csrf_token,
-                base_url = base_url,
-            )
-        } else {
-            "".to_owned()
-        };
+            path = encode_link_path(path_prefix),
+            csrf = upload.csrf_token,
+            base_url = base_url,
+        )).unwrap_or_default();
 
         // Put all parts together
         resp.set_mut(format!(
