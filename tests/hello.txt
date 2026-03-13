@@ -1,0 +1,7 @@
+Language (English)	"Hello, World!" Translation
+English	Hello, World!
+Chinese (Simplified)	你好，世界！ (Nǐ hǎo, shìjiè!)
+Russian	Здравствуй, мир! (Zdravstvuy, mir!)
+Japanese	こんにちは、世界！ (Konnichiwa, sekai!)
+
+
