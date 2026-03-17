@@ -21,10 +21,15 @@ flate2 = "1.1.9"
 http-body = "1.0.1"
 httpdate = "1.0.3"
 mime_guess = "2.0.5"
-openssl = { version = "0.10.76", optional = true }
 time = { version = "0.3.47", features = ["formatting", "local-offset", "macros"] }
 tokio = { version = "1.50.0", features = ["rt-multi-thread", "net", "fs", "io-util", "time", "sync"] }
 tokio-openssl = { version = "0.6.5", optional = true }
+
+[target.'cfg(not(windows))'.dependencies]
+openssl = { version = "0.10.76", optional = true }
+
+[target.'cfg(windows)'.dependencies]
+openssl = { version = "0.10.76", optional = true, features = ["vendored"] }
 
 [dev-dependencies]
 http-body-util = "0.1.3"
