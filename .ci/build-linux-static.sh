@@ -32,4 +32,4 @@ export OPENSSL_ROOT_DIR=$install
 export OPENSSL_LIB_DIR=$install/lib
 export OPENSSL_INCLUDE_DIR=$install/include
 
-cargo build --release
+cargo build --release --features tls

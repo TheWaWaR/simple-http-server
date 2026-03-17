@@ -1,38 +1,31 @@
 [package]
 name = "simple-http-server"
-version = "0.6.14"
+version = "0.8.0"
 authors = ["thewawar <thewawar@gmail.com>"]
 license = "MIT"
 description = "Simple HTTP server"
 readme = "README.md"
 keywords = ["simple", "http", "server", "static", "file"]
 repository = "https://github.com/TheWaWaR/simple-http-server"
-edition = "2018"
-
-[dependencies]
-clap = "2.33.0"
-termcolor = "1.0.5"
-time = "0.1.42"
-chrono = "0.4.9"
-flate2 = "1.0.11"
-filetime = "0.2.7"
-pretty-bytes = "0.2.2"
-rand = "0.8.3"
-url = "2.1.0"
-hyper-native-tls = { version = "0.3.0", optional = true }
-openssl = { version = "0.10", features = ["vendored"], optional = true }
-rustls = { version = "0.20", optional = true }
-mime_guess = "2.0"
-open = "5"
-# Iron crates
-iron = "0.6.1"
-iron-cors = "0.8.0"
-multipart = { version = "0.18", default-features = false, features = ["server", "iron"] }
-htmlescape = "0.3.1"
-percent-encoding = "2.3.0"
-path-dedot = "1"
+edition = "2024"
 
 [features]
-default = ["native-tls"]
-only-openssl = ["native-tls", "openssl"]
-native-tls = ["hyper-native-tls"]
+default = []
+tls = ["dep:openssl", "dep:tokio-openssl"]
+
+[dependencies]
+axum = { version = "0.8.8", default-features = false, features = ["http1", "tokio", "multipart"] }
+base64 = "0.22.1"
+clap = { version = "4.6.0", default-features = false, features = ["std", "help", "usage", "error-context", "suggestions", "color"] }
+flate2 = "1.1.9"
+http-body = "1.0.1"
+httpdate = "1.0.3"
+mime_guess = "2.0.5"
+openssl = { version = "0.10.76", optional = true }
+time = { version = "0.3.47", features = ["formatting", "local-offset", "macros"] }
+tokio = { version = "1.50.0", features = ["rt-multi-thread", "net", "fs", "io-util", "time", "sync"] }
+tokio-openssl = { version = "0.6.5", optional = true }
+
+[dev-dependencies]
+http-body-util = "0.1.3"
+tower = { version = "0.5.3", features = ["util"] }

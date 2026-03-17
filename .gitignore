@@ -10,3 +10,5 @@
 
 # IDE folders
 .idea/
+
+target/
