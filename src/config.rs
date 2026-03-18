@@ -365,11 +365,7 @@ pub(crate) fn print_startup(config: &Config) {
             .as_ref()
             .map(|path| path.to_string_lossy().into_owned())
             .unwrap_or_default(),
-        if config.cert.is_some() {
-            format!("https://{}", bind_addr_string(config.ip, config.port))
-        } else {
-            format!("http://{}", bind_addr_string(config.ip, config.port))
-        },
+        server_url(config),
         now_string()
     );
 }
@@ -380,6 +376,23 @@ pub(crate) fn bind_addr_string(ip: IpAddr, port: u16) -> String {
     } else {
         format!("[{ip}]:{port}")
     }
+}
+
+pub(crate) fn server_url(config: &Config) -> String {
+    let scheme = if config.cert.is_some() {
+        "https"
+    } else {
+        "http"
+    };
+    format!("{scheme}://{}", bind_addr_string(config.ip, config.port))
+}
+
+pub(crate) fn browser_url(config: &Config) -> String {
+    if config.cert.is_some() && (config.ip.is_unspecified() || config.ip.is_loopback()) {
+        return format!("https://localhost:{}", config.port);
+    }
+
+    server_url(config)
 }
 
 pub(crate) fn enable_string(value: bool) -> &'static str {
@@ -542,6 +555,8 @@ fn command_status(command: &mut ProcessCommand) -> io::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use std::net::{Ipv4Addr, Ipv6Addr};
+
     use super::*;
 
     #[test]
@@ -597,6 +612,29 @@ mod tests {
         );
     }
 
+    #[test]
+    fn browser_url_uses_localhost_for_https_local_bindings() {
+        let mut config = test_config(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+        config.cert = Some(PathBuf::from("localhost.p12"));
+        assert_eq!(browser_url(&config), "https://localhost:8000");
+
+        config.ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        assert_eq!(browser_url(&config), "https://localhost:8000");
+
+        config.ip = IpAddr::V6(Ipv6Addr::LOCALHOST);
+        assert_eq!(browser_url(&config), "https://localhost:8000");
+    }
+
+    #[test]
+    fn browser_url_keeps_bind_address_when_not_local_https() {
+        let mut config = test_config(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10)));
+        config.cert = Some(PathBuf::from("server.p12"));
+        assert_eq!(browser_url(&config), "https://192.168.1.10:8000");
+
+        config.cert = None;
+        assert_eq!(browser_url(&config), "http://192.168.1.10:8000");
+    }
+
     fn make_temp_dir() -> PathBuf {
         let mut path = env::temp_dir();
         path.push(format!(
@@ -606,5 +644,32 @@ mod tests {
         ));
         fs::create_dir_all(&path).unwrap();
         path
+    }
+
+    fn test_config(ip: IpAddr) -> Config {
+        Config {
+            root: PathBuf::from("."),
+            index: false,
+            upload: None,
+            redirect_to: None,
+            sort: true,
+            cache: true,
+            range: true,
+            cert: None,
+            certpass: None,
+            cors: false,
+            coop: false,
+            coep: false,
+            ip,
+            port: 8000,
+            upload_size_limit: 8 * 1024 * 1024,
+            auth: None,
+            compress: Vec::new(),
+            threads: 1,
+            try_file_404: None,
+            silent: false,
+            open: false,
+            base_url: "/".to_owned(),
+        }
     }
 }

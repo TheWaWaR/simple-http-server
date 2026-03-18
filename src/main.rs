@@ -5,7 +5,7 @@ mod util;
 
 use std::sync::Arc;
 
-use config::{bind_addr_string, build_cli, build_config, open_in_browser, print_startup};
+use config::{bind_addr_string, build_cli, build_config, print_startup};
 use server::run_server;
 
 fn main() {
@@ -17,22 +17,6 @@ fn main() {
             std::process::exit(1);
         }
     };
-
-    if config.open {
-        let scheme = if config.cert.is_some() {
-            "https"
-        } else {
-            "http"
-        };
-        let host = format!("{scheme}://{}", bind_addr_string(config.ip, config.port));
-        if let Err(err) = open_in_browser(&host) {
-            if !config.silent {
-                eprintln!("Unable to open in default browser {err}");
-            }
-        } else if !config.silent {
-            println!("Opening {host} in default browser");
-        }
-    }
 
     if !config.silent {
         print_startup(&config);

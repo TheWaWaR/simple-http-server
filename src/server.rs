@@ -4,15 +4,12 @@ use axum::{
     Router,
     extract::{DefaultBodyLimit, connect_info::Connected},
     routing::any,
-    serve::IncomingStream,
+    serve::{IncomingStream, Listener},
 };
 use tokio::net::TcpListener;
 
 #[cfg(feature = "tls")]
 use std::{pin::Pin, time::Duration};
-
-#[cfg(feature = "tls")]
-use axum::serve::Listener;
 
 #[cfg(feature = "tls")]
 use openssl::{
@@ -26,7 +23,10 @@ use tokio::net::TcpStream;
 #[cfg(feature = "tls")]
 use tokio_openssl::SslStream;
 
-use crate::{config::Config, handlers::handle_request};
+use crate::{
+    config::{Config, browser_url, open_in_browser},
+    handlers::handle_request,
+};
 
 #[cfg(feature = "tls")]
 pub(crate) struct HttpsListener {
@@ -99,11 +99,7 @@ pub(crate) async fn run_server(config: Arc<Config>) -> io::Result<()> {
             config.certpass.as_deref().unwrap_or(""),
         )?);
         let listener = HttpsListener::new(listener, acceptor);
-        return axum::serve(
-            listener,
-            app.into_make_service_with_connect_info::<PeerAddr>(),
-        )
-        .await;
+        return serve_with_optional_open(listener, app, config).await;
     }
 
     #[cfg(not(feature = "tls"))]
@@ -114,11 +110,7 @@ pub(crate) async fn run_server(config: Arc<Config>) -> io::Result<()> {
     }
 
     let listener = TcpListener::bind(bind_addr).await?;
-    axum::serve(
-        listener,
-        app.into_make_service_with_connect_info::<PeerAddr>(),
-    )
-    .await
+    serve_with_optional_open(listener, app, config).await
 }
 
 fn build_router(config: Arc<Config>) -> Router {
@@ -129,6 +121,62 @@ fn build_router(config: Arc<Config>) -> Router {
         .route("/{*path}", any(handle_request))
         .layer(DefaultBodyLimit::max(body_limit))
         .with_state(config)
+}
+
+async fn serve_with_optional_open<L>(
+    listener: L,
+    app: Router,
+    config: Arc<Config>,
+) -> io::Result<()>
+where
+    L: Listener + Send + 'static,
+    L::Addr: Send + std::fmt::Debug,
+    L::Io: Send + 'static,
+    for<'a> PeerAddr: Connected<IncomingStream<'a, L>>,
+{
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<PeerAddr>(),
+        )
+        .await
+    });
+
+    maybe_open_browser(config).await;
+
+    match server.await {
+        Ok(result) => result,
+        Err(err) => Err(io::Error::other(err)),
+    }
+}
+
+async fn maybe_open_browser(config: Arc<Config>) {
+    if !config.open {
+        return;
+    }
+
+    let url = browser_url(&config);
+    let browser_url = url.clone();
+    let silent = config.silent;
+    let result = tokio::task::spawn_blocking(move || open_in_browser(&browser_url)).await;
+
+    match result {
+        Ok(Ok(())) => {
+            if !silent {
+                println!("Opening {url} in default browser");
+            }
+        }
+        Ok(Err(err)) => {
+            if !silent {
+                eprintln!("Unable to open in default browser {err}");
+            }
+        }
+        Err(err) => {
+            if !silent {
+                eprintln!("Unable to open in default browser {err}");
+            }
+        }
+    }
 }
 
 #[cfg(feature = "tls")]
