@@ -268,6 +268,30 @@ mod tests {
     }
 
     #[test]
+    fn sorts_directory_listing_from_query_params() {
+        run_async_test(async {
+            let root = make_temp_dir();
+            fs::write(root.join("a.txt"), "a").unwrap();
+            fs::write(root.join("b.txt"), "b").unwrap();
+
+            let response = send(
+                test_app(test_config(root.clone())),
+                Request::builder()
+                    .uri("/?sort=name&order=asc")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+
+            assert_eq!(response.status(), StatusCode::OK);
+            let body = response_text(response).await;
+            assert!(body.find("a.txt").unwrap() < body.find("b.txt").unwrap());
+
+            fs::remove_dir_all(root).unwrap();
+        });
+    }
+
+    #[test]
     fn serves_try_file_for_missing_paths() {
         run_async_test(async {
             let root = make_temp_dir();

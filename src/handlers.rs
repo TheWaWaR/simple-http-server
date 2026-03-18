@@ -14,7 +14,7 @@ use std::{
 
 use axum::{
     body::{Body, Bytes},
-    extract::{FromRequest, Multipart, Request, State, connect_info::ConnectInfo},
+    extract::{FromRequest, Multipart, Query, Request, State, connect_info::ConnectInfo},
     http::{HeaderMap, HeaderValue, Method, StatusCode, header},
     response::Response,
 };
@@ -25,6 +25,7 @@ use flate2::{
     write::{DeflateEncoder, GzEncoder},
 };
 use http_body::{Frame, SizeHint};
+use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 
@@ -33,9 +34,9 @@ use crate::{
     server::PeerAddr,
     util::{
         decode_request_path, encode_link_path, escape_html, fmt_http_date, format_local_time,
-        generate_csrf_token, header_value, human_size, now_string, parse_query_pairs,
-        path_matches_compression, percent_decode_lossy, resolve_relative_path, root_link,
-        system_time_parts, truncate_to_second, upload_redirect_target,
+        generate_csrf_token, header_value, human_size, now_string, path_matches_compression,
+        percent_decode_lossy, resolve_relative_path, root_link, system_time_parts,
+        truncate_to_second, upload_redirect_target,
     },
 };
 
@@ -65,7 +66,12 @@ struct PendingUpload {
 struct RequestMeta {
     method: Method,
     headers: HeaderMap,
-    query: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct DirectoryQuery {
+    sort: Option<String>,
+    order: Option<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -255,7 +261,6 @@ async fn handle_request_inner(config: Arc<Config>, req: Request) -> Result<Respo
     let request_meta = RequestMeta {
         method: req.method().clone(),
         headers: req.headers().clone(),
-        query: req.uri().query().map(ToOwned::to_owned),
     };
 
     if let Some(response) = authorize(config.as_ref(), &request_meta.headers)? {
@@ -313,9 +318,12 @@ async fn handle_request_inner(config: Arc<Config>, req: Request) -> Result<Respo
     };
 
     if metadata.is_dir() {
+        let directory_query = Query::<DirectoryQuery>::try_from_uri(req.uri())
+            .map_err(|err| AppError::new(StatusCode::BAD_REQUEST, err.body_text()))?;
         list_directory(
             config.as_ref(),
             &request_meta,
+            &directory_query.0,
             &fs_path,
             &path_segments,
             request_meta.method == Method::HEAD,
@@ -616,6 +624,7 @@ fn cleanup_pending_uploads(files: &[PendingUpload]) {
 async fn list_directory(
     config: &Config,
     request: &RequestMeta,
+    query: &DirectoryQuery,
     fs_path: &Path,
     path_prefix: &[String],
     head_only: bool,
@@ -652,19 +661,11 @@ async fn list_directory(
     };
 
     let sort_links = if config.sort {
-        let query = parse_query_pairs(request.query.as_deref());
-        let mut sort_field = Some("name".to_owned());
-        let mut order = None;
-        for (key, value) in query {
-            if key == "sort" {
-                sort_field = Some(value);
-            } else if key == "order" {
-                order = Some(value);
-            }
-        }
-
-        let order = order.unwrap_or_else(|| DEFAULT_ORDER.to_owned());
-        let field = sort_field.unwrap_or_else(|| "name".to_owned());
+        let order = query
+            .order
+            .clone()
+            .unwrap_or_else(|| DEFAULT_ORDER.to_owned());
+        let field = query.sort.clone().unwrap_or_else(|| "name".to_owned());
 
         if !SORT_FIELDS.contains(&field.as_str()) {
             return Err(AppError::new(

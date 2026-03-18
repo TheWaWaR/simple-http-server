@@ -49,26 +49,6 @@ pub(crate) fn decode_request_path(path: &str) -> Result<Vec<String>, String> {
         .collect()
 }
 
-pub(crate) fn parse_query_pairs(query: Option<&str>) -> Vec<(String, String)> {
-    let Some(query) = query else {
-        return Vec::new();
-    };
-
-    let mut result = Vec::new();
-    for pair in query.split('&') {
-        if pair.is_empty() {
-            continue;
-        }
-
-        let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
-        result.push((
-            percent_decode_lossy(key, true),
-            percent_decode_lossy(value, true),
-        ));
-    }
-    result
-}
-
 pub(crate) fn percent_decode_lossy(value: &str, plus_as_space: bool) -> String {
     String::from_utf8_lossy(&percent_decode_bytes(value, plus_as_space)).into_owned()
 }
