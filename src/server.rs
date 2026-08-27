@@ -630,6 +630,130 @@ mod tests {
         });
     }
 
+    #[test]
+    fn sandboxes_xml_based_files() {
+        run_async_test(async {
+            let root = make_temp_dir();
+            fs::write(
+                root.join("hello.svg"),
+                "<svg xmlns=\"http://www.w3.org/2000/svg\"/>",
+            )
+            .unwrap();
+            fs::write(
+                root.join("hello.xml"),
+                "<?xml-stylesheet type=\"text/xsl\" href=\"hello.xsl\"?><root/>",
+            )
+            .unwrap();
+            fs::write(root.join("hello.xsl"), "<xsl:stylesheet/>").unwrap();
+            fs::write(root.join("hello.xhtml"), "<html/>").unwrap();
+
+            for (name, content_type) in [
+                ("hello.svg", "image/svg+xml"),
+                ("hello.xml", "text/xml"),
+                ("hello.xsl", "text/xml"),
+                ("hello.xhtml", "application/xhtml+xml"),
+            ] {
+                let response = send(
+                    test_app(test_config(root.clone())),
+                    Request::builder()
+                        .uri(format!("/{name}"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await;
+
+                assert_eq!(response.status(), StatusCode::OK, "{name}");
+                assert_eq!(
+                    response
+                        .headers()
+                        .get(header::CONTENT_TYPE)
+                        .unwrap()
+                        .to_str()
+                        .unwrap(),
+                    content_type,
+                    "{name}"
+                );
+                assert_eq!(
+                    response
+                        .headers()
+                        .get(header::CONTENT_SECURITY_POLICY)
+                        .unwrap()
+                        .to_str()
+                        .unwrap(),
+                    "sandbox",
+                    "{name}"
+                );
+                assert_eq!(
+                    response
+                        .headers()
+                        .get(header::X_CONTENT_TYPE_OPTIONS)
+                        .unwrap()
+                        .to_str()
+                        .unwrap(),
+                    "nosniff",
+                    "{name}"
+                );
+            }
+
+            fs::remove_dir_all(root).unwrap();
+        });
+    }
+
+    #[test]
+    fn does_not_sandbox_other_files() {
+        run_async_test(async {
+            let root = make_temp_dir();
+            fs::write(root.join("index.html"), "<h1>hello</h1>").unwrap();
+            fs::write(root.join("hello.txt"), "hello").unwrap();
+            fs::write(root.join("blob.bin"), "hello").unwrap();
+
+            for (name, content_type) in [
+                ("index.html", "text/html"),
+                ("hello.txt", "text/plain"),
+                ("blob.bin", "application/octet-stream"),
+            ] {
+                let response = send(
+                    test_app(test_config(root.clone())),
+                    Request::builder()
+                        .uri(format!("/{name}"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await;
+
+                assert_eq!(response.status(), StatusCode::OK, "{name}");
+                assert_eq!(
+                    response
+                        .headers()
+                        .get(header::CONTENT_TYPE)
+                        .unwrap()
+                        .to_str()
+                        .unwrap(),
+                    content_type,
+                    "{name}"
+                );
+                assert!(
+                    !response
+                        .headers()
+                        .contains_key(header::CONTENT_SECURITY_POLICY),
+                    "{name}"
+                );
+                assert_eq!(
+                    response
+                        .headers()
+                        .get(header::X_CONTENT_TYPE_OPTIONS)
+                        .unwrap()
+                        .to_str()
+                        .unwrap(),
+                    "nosniff",
+                    "{name}"
+                );
+            }
+
+            fs::remove_dir_all(root).unwrap();
+        });
+    }
+
     fn test_app(config: Config) -> Router {
         build_router(std::sync::Arc::new(config))
             .layer(MockConnectInfo(PeerAddr(([127, 0, 0, 1], 12345).into())))

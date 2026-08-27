@@ -842,6 +842,12 @@ async fn list_directory(
     ))
 }
 
+/// Whether the mime type is an XML based document type, e.g. `text/xml`,
+/// `image/svg+xml` or `application/xhtml+xml`.
+fn is_xml_based(mime: &mime_guess::Mime) -> bool {
+    mime.subtype() == mime_guess::mime::XML || mime.suffix() == Some(mime_guess::mime::XML)
+}
+
 async fn send_file(
     config: &Config,
     request: &RequestMeta,
@@ -877,6 +883,20 @@ async fn send_file(
     response
         .headers_mut()
         .insert(header::CONTENT_TYPE, header_value(mime.essence_str()));
+
+    // Never let a browser sniff a served file into a more dangerous type
+    response.headers_mut().insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+
+    // Prevents scripts from running on XML-based documents (SVG, XHTML, XSLT, ...) within their origin
+    if is_xml_based(&mime) {
+        response.headers_mut().insert(
+            header::CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static("sandbox"),
+        );
+    }
 
     if config.range {
         response
