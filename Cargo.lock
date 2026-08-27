@@ -642,7 +642,7 @@ checksum = "e320a6c5ad31d271ad523dcf3ad13e2767ad8b1cb8f047f75a8aeaf8da139da2"
 
 [[package]]
 name = "simple-http-server"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "axum",
  "base64",
