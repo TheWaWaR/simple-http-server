@@ -17,6 +17,8 @@ tls = ["dep:openssl", "dep:tokio-openssl"]
 axum = { version = "0.8.8", default-features = false, features = ["http1", "tokio", "multipart", "query"] }
 base64 = "0.22.1"
 clap = { version = "4.6.0", default-features = false, features = ["std", "help", "usage", "error-context", "suggestions", "color"] }
+clap_complete = "4.6.9"
+clap_complete_nushell = "4.6.2"
 flate2 = "1.1.9"
 http-body = "1.0.1"
 httpdate = "1.0.3"
