@@ -5,11 +5,17 @@ mod util;
 
 use std::sync::Arc;
 
-use config::{bind_addr_string, build_cli, build_config, print_startup};
+use config::{bind_addr_string, build_cli, build_config, print_completions, print_startup};
 use server::run_server;
 
 fn main() {
     let matches = build_cli().get_matches();
+
+    if let Some(shell) = matches.get_one::<String>("completions") {
+        print_completions(shell);
+        return;
+    }
+
     let config = match build_config(matches) {
         Ok(config) => Arc::new(config),
         Err(message) => {

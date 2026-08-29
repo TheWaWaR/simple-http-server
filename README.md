@@ -55,6 +55,7 @@ Options:
   -s, --silent                    Disable all outputs
   -o, --open                      Open the page in the default browser
   -b, --base-url <PATH>           Base URL prefix for directory indexes and upload redirects. It is normalized to start with '/' and to end with '/' when not root. [default: /]
+      --completions <SHELL>       Generate a shell completion script for SHELL and print it to stdout, then exit [possible values: bash, elvish, fish, nushell, powershell, zsh]
   -h, --help                      Print help
   -V, --version                   Print version
 ```
@@ -83,6 +84,13 @@ Run behind a reverse proxy that strips `/static/` before forwarding:
 
 ```sh
 simple-http-server --base-url /static/ .
+```
+
+Generate and install the Bash (v4.2+) shell completion script for the current user:
+
+```sh
+mkdir -p ~/.local/share/bash-completion/completions
+simple-http-server --completions bash > ~/.local/share/bash-completion/completions/simple-http-server
 ```
 
 ## HTTPS Example

@@ -219,6 +219,41 @@ pub(crate) fn build_cli() -> Command {
                 .default_value("/")
                 .help("Base URL prefix for directory indexes and upload redirects. It is normalized to start with '/' and to end with '/' when not root."),
         )
+        .arg(
+            Arg::new("completions")
+                .long("completions")
+                .value_name("SHELL")
+                .value_parser(clap::builder::PossibleValuesParser::new(COMPLETION_SHELLS))
+                .help("Generate a shell completion script for SHELL and print it to stdout, then exit"),
+        )
+}
+
+/// Shells for which a completion script can be generated via `--completions`.
+const COMPLETION_SHELLS: [&str; 6] = ["bash", "elvish", "fish", "nushell", "powershell", "zsh"];
+
+/// Writes a completion script for `shell` to stdout.
+///
+/// `shell` must be one of [`COMPLETION_SHELLS`], as enforced by the `--completions` value parser.
+pub(crate) fn print_completions(shell: &str) {
+    let mut cmd = build_cli();
+    let bin_name = cmd.get_name().to_owned();
+    let mut stdout = io::stdout();
+
+    if shell == "nushell" {
+        clap_complete::generate(
+            clap_complete_nushell::Nushell,
+            &mut cmd,
+            bin_name,
+            &mut stdout,
+        );
+        return;
+    }
+
+    let shell =
+        <clap_complete::Shell as clap::ValueEnum>::from_str(shell, true).unwrap_or_else(|_| {
+            unreachable!("--completions is restricted to COMPLETION_SHELLS by its value parser")
+        });
+    clap_complete::generate(shell, &mut cmd, bin_name, &mut stdout);
 }
 
 pub(crate) fn build_config(matches: clap::ArgMatches) -> Result<Config, String> {
@@ -633,6 +668,24 @@ mod tests {
 
         config.cert = None;
         assert_eq!(browser_url(&config), "http://192.168.1.10:8000");
+    }
+
+    #[test]
+    fn accepts_completions_flag_for_every_supported_shell() {
+        for shell in COMPLETION_SHELLS {
+            let matches = build_cli()
+                .try_get_matches_from(["simple-http-server", "--completions", shell])
+                .unwrap_or_else(|err| panic!("shell '{shell}' should be accepted: {err}"));
+            assert_eq!(matches.get_one::<String>("completions").unwrap(), shell);
+        }
+    }
+
+    #[test]
+    fn rejects_completions_flag_with_unsupported_shell() {
+        let err = build_cli()
+            .try_get_matches_from(["simple-http-server", "--completions", "csh"])
+            .unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::InvalidValue);
     }
 
     fn make_temp_dir() -> PathBuf {
