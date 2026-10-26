@@ -35,8 +35,8 @@ use crate::{
     util::{
         decode_request_path, encode_link_path, escape_html, fmt_http_date, format_local_time,
         generate_csrf_token, header_value, human_size, now_string, path_matches_compression,
-        percent_decode_lossy, resolve_relative_path, root_link, system_time_parts,
-        truncate_to_second, upload_redirect_target,
+        percent_decode_lossy, resolve_relative_path, system_time_parts, truncate_to_second,
+        upload_redirect_target,
     },
 };
 
@@ -46,6 +46,178 @@ const DEFAULT_ORDER: &str = ORDER_DESC;
 const SORT_FIELDS: &[&str] = &["name", "modified", "size"];
 const FILE_CHUNK_SIZE: usize = 64 * 1024;
 const BODY_CHANNEL_CAPACITY: usize = 8;
+
+const PAGE_STYLE: &str = r#"
+:root {
+  color-scheme: light dark;
+  --desktop: 220 14% 91%;
+  --background: 0 0% 100%;
+  --foreground: 240 10% 3.9%;
+  --card: 0 0% 100%;
+  --titlebar: 220 14% 93%;
+  --border: 240 5.9% 88%;
+  --primary: 212 92% 45%;
+  --primary-foreground: 0 0% 98%;
+  --muted: 220 14% 96%;
+  --muted-foreground: 240 3.8% 46.1%;
+  --accent: 212 92% 94%;
+  --destructive: 0 84.2% 60.2%;
+  --radius: 0.55rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --desktop: 240 6% 10%;
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 6% 14%;
+    --titlebar: 240 6% 17%;
+    --border: 240 3.7% 22%;
+    --primary: 212 92% 60%;
+    --primary-foreground: 240 10% 3.9%;
+    --muted: 240 4% 18%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 212 50% 22%;
+    --destructive: 0 62.8% 45%;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 3rem 1rem;
+  font-family: -apple-system, BlinkMacSystemFont, ui-sans-serif, "Segoe UI", Roboto, sans-serif;
+  background: hsl(var(--desktop));
+  color: hsl(var(--foreground));
+}
+a { color: inherit; text-decoration: none; }
+.finder-window {
+  max-width: 900px;
+  margin: 0 auto;
+  background: hsl(var(--card));
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 20px 45px -12px rgba(0, 0, 0, 0.35), 0 0 0 1px hsl(var(--border));
+}
+.titlebar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 38px;
+  padding: 0 14px;
+  background: hsl(var(--titlebar));
+  border-bottom: 1px solid hsl(var(--border));
+}
+.traffic-lights { display: flex; gap: 8px; }
+.dot { width: 12px; height: 12px; border-radius: 50%; }
+.dot.red { background: #ff5f57; }
+.dot.yellow { background: #febc2e; }
+.dot.green { background: #28c840; }
+.titlebar-title {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground));
+}
+.pathbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: hsl(var(--muted));
+  border-bottom: 1px solid hsl(var(--border));
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+.back-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  font-size: 13px;
+  line-height: 1;
+}
+.back-btn:hover { background: hsl(var(--accent)); }
+.path { overflow-x: auto; white-space: nowrap; }
+.path a { font-weight: 500; }
+.path a:hover { text-decoration: underline; }
+.crumb-sep { margin: 0 4px; color: hsl(var(--muted-foreground) / 0.7); }
+.upload-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid hsl(var(--border));
+}
+.upload-form input[type="file"] { font-size: 12px; color: hsl(var(--muted-foreground)); }
+.upload-form input[type="submit"] {
+  appearance: none;
+  border: none;
+  border-radius: calc(var(--radius) - 3px);
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  padding: 0.4rem 0.9rem;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.upload-form input[type="submit"]:hover { opacity: 0.9; }
+table.listing {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+table.listing th {
+  text-align: left;
+  padding: 6px 14px;
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  font-size: 11.5px;
+  font-weight: 500;
+  border-bottom: 1px solid hsl(var(--border));
+  user-select: none;
+}
+table.listing th a:hover { text-decoration: underline; }
+table.listing td {
+  padding: 5px 14px;
+  border-top: 1px solid hsl(var(--border));
+  vertical-align: middle;
+}
+table.listing tr:hover td { background: hsl(var(--accent)); }
+.name-link { display: flex; align-items: center; gap: 7px; }
+.icon { flex-shrink: 0; }
+table.listing td.modified,
+table.listing td.size {
+  color: hsl(var(--muted-foreground));
+  white-space: nowrap;
+}
+table.listing td.size { text-align: right; }
+.error-window { max-width: 420px; margin: 0 auto; }
+.error-body { padding: 28px 24px; text-align: center; }
+.error-badge {
+  display: inline-block;
+  margin: 0.75rem 0;
+  padding: 0.25rem 0.65rem;
+  border-radius: 9999px;
+  background: hsl(var(--destructive) / 0.15);
+  color: hsl(var(--destructive));
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+"#;
+
+const FOLDER_ICON: &str = "<svg class=\"icon\" viewBox=\"0 0 20 16\" width=\"16\" height=\"14\" aria-hidden=\"true\" focusable=\"false\"><path fill=\"#8ec4f7\" d=\"M1 3.5A1.5 1.5 0 0 1 2.5 2h5l1.5 1.8h8A1.5 1.5 0 0 1 18.5 5.3V13a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 .5 13V3.5z\"/><path fill=\"#4a9bf0\" d=\"M.5 5.8h18V13a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 .5 13V5.8z\"/></svg>";
+const FILE_ICON: &str = "<svg class=\"icon\" viewBox=\"0 0 20 20\" width=\"14\" height=\"14\" aria-hidden=\"true\" focusable=\"false\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.3\" d=\"M4.5 2h7l4 4v12h-11z\"/><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.3\" d=\"M11.5 2v4h4\"/></svg>";
+const HOME_ICON: &str = "<svg class=\"icon\" viewBox=\"0 0 20 18\" width=\"13\" height=\"12\" aria-hidden=\"true\" focusable=\"false\"><path fill=\"currentColor\" d=\"M10 1 1 8h2v9h5v-6h4v6h5V8h2z\"/></svg>";
 
 struct AppError {
     status: StatusCode,
@@ -415,8 +587,7 @@ fn redirect_response(status: StatusCode, location: &str) -> Response {
 
 fn error_response(status: StatusCode, message: &str, base_url: &str) -> Response {
     let html = format!(
-        "<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"utf-8\">\n</head>\n<body>\n  {}\n  <hr />\n  <div>[<strong style=color:red;>ERROR {}</strong>]: {}</div>\n</body>\n</html>\n",
-        root_link(base_url),
+        "<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"utf-8\">\n  <style>{PAGE_STYLE}</style>\n</head>\n<body>\n  <div class=\"finder-window error-window\">\n    <div class=\"titlebar\">\n      <div class=\"traffic-lights\"><span class=\"dot red\"></span><span class=\"dot yellow\"></span><span class=\"dot green\"></span></div>\n      <div class=\"titlebar-title\">Error</div>\n    </div>\n    <div class=\"error-body\">\n      <a class=\"name-link\" href=\"{base_url}\">{HOME_ICON}<span>Home</span></a>\n      <div class=\"error-badge\">ERROR {}</div>\n      <div>{}</div>\n    </div>\n  </div>\n</body>\n</html>\n",
         status.as_u16(),
         escape_html(message)
     );
@@ -639,6 +810,19 @@ async fn list_directory(
         });
     }
 
+    let folder_name = path_prefix.last().cloned().unwrap_or_else(|| {
+        config
+            .root
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "/".to_owned())
+    });
+
+    let home_crumb = format!(
+        "<a class=\"name-link\" href=\"{}\">{HOME_ICON}<span>Home</span></a>",
+        config.base_url
+    );
+
     let breadcrumb = if !path_prefix.is_empty() {
         let mut remaining = path_prefix.to_vec();
         let mut links = vec![escape_html(remaining.pop().unwrap_or_default().as_str())];
@@ -647,17 +831,32 @@ async fn list_directory(
             let mut link_prefix = remaining.clone();
             link_prefix.push(label.clone());
             links.push(format!(
-                "<a href=\"{}{}\"><strong>{}</strong></a>",
+                "<a href=\"{}{}\">{}</a>",
                 config.base_url,
                 encode_link_path(&link_prefix),
                 escape_html(&label)
             ));
         }
-        links.push(root_link(&config.base_url));
+        links.push(home_crumb);
         links.reverse();
-        links.join(" / ")
+        links.join("<span class=\"crumb-sep\">›</span>")
     } else {
-        root_link(&config.base_url)
+        home_crumb
+    };
+
+    let back_link = if !path_prefix.is_empty() {
+        let mut link = path_prefix.to_vec();
+        link.pop();
+        if !link.is_empty() {
+            link.push(String::new());
+        }
+        format!(
+            "<a class=\"back-btn\" href=\"{}{}\" title=\"Up\">‹</a>",
+            config.base_url,
+            encode_link_path(&link),
+        )
+    } else {
+        String::new()
     };
 
     let sort_links = if config.sort {
@@ -720,42 +919,31 @@ async fn list_directory(
 
         let mut current_link = path_prefix.to_vec();
         current_link.push(String::new());
+        let query_path = format!("{}{}", config.base_url, encode_link_path(&current_link));
+
+        let header = |key: &str, label: &str| {
+            let next_order = next_orders.get(key).copied().unwrap_or(DEFAULT_ORDER);
+            let arrow = if field == key {
+                if order == ORDER_ASC { " ▲" } else { " ▼" }
+            } else {
+                ""
+            };
+            format!(
+                "<th><a href=\"{query_path}?sort={key}&order={next_order}\">{label}{arrow}</a></th>"
+            )
+        };
 
         format!(
-            "\n<tr>\n  <th><a href=\"{}{}?sort=name&order={}\">Name</a></th>\n  <th><a href=\"{}{}?sort=modified&order={}\">Last modified</a></th>\n  <th><a href=\"{}{}?sort=size&order={}\">Size</a></th>\n</tr>\n<tr><td style=\"border-top:1px dashed #BBB;\" colspan=\"5\"></td></tr>\n",
-            config.base_url,
-            encode_link_path(&current_link),
-            next_orders.get("name").copied().unwrap_or(DEFAULT_ORDER),
-            config.base_url,
-            encode_link_path(&current_link),
-            next_orders
-                .get("modified")
-                .copied()
-                .unwrap_or(DEFAULT_ORDER),
-            config.base_url,
-            encode_link_path(&current_link),
-            next_orders.get("size").copied().unwrap_or(DEFAULT_ORDER),
+            "\n<tr>\n  {}\n  {}\n  {}\n</tr>\n",
+            header("name", "Name"),
+            header("modified", "Date Modified"),
+            header("size", "Size"),
         )
     } else {
         String::new()
     };
 
     let mut rows = Vec::new();
-
-    if !path_prefix.is_empty() {
-        let mut link = path_prefix.to_vec();
-        link.pop();
-        if !link.is_empty() {
-            link.push(String::new());
-        }
-        rows.push(format!(
-            "\n<tr>\n  <td><a href=\"{}{}\"><strong>[Up]</strong></a></td>\n  <td></td>\n  <td></td>\n</tr>\n",
-            config.base_url,
-            encode_link_path(&link),
-        ));
-    } else {
-        rows.push("<tr><td>&nbsp;</td></tr>".to_owned());
-    }
 
     for entry in entries {
         if config.index && (entry.filename == "index.html" || entry.filename == "index.htm") {
@@ -775,28 +963,22 @@ async fn list_directory(
             link.push(String::new());
         }
 
-        let label = if entry.metadata.is_dir() {
-            format!("{}/", entry.filename)
+        let is_dir = entry.metadata.is_dir();
+        let row_class = if is_dir { "dir" } else { "file" };
+        let icon = if is_dir { FOLDER_ICON } else { FILE_ICON };
+        let size_display = if is_dir {
+            "-".to_owned()
         } else {
-            entry.filename.clone()
+            human_size(entry.metadata.len())
         };
 
         rows.push(format!(
-            "\n<tr>\n  <td><a {} href=\"{}{}\">{}</a></td>\n  <td style=\"color:#888;\">[{}]</td>\n  <td><bold>{}</bold></td>\n</tr>\n",
-            if entry.metadata.is_dir() {
-                "style=\"font-weight: bold;\""
-            } else {
-                ""
-            },
+            "\n<tr class=\"{row_class}\">\n  <td><a class=\"name-link\" href=\"{}{}\">{icon}<span>{}</span></a></td>\n  <td class=\"modified\">{}</td>\n  <td class=\"size\">{}</td>\n</tr>\n",
             config.base_url,
             encode_link_path(&link),
-            escape_html(&label),
+            escape_html(&entry.filename),
             format_local_time(entry.metadata.modified().unwrap_or(UNIX_EPOCH)),
-            if entry.metadata.is_dir() {
-                "-".to_owned()
-            } else {
-                human_size(entry.metadata.len())
-            },
+            size_display,
         ));
     }
 
@@ -805,7 +987,7 @@ async fn list_directory(
         .as_ref()
         .map(|upload| {
             format!(
-                "\n<form style=\"margin-top:1em; margin-bottom:1em;\" action=\"{}{}\" method=\"POST\" enctype=\"multipart/form-data\">\n  <input type=\"file\" name=\"files\" accept=\"*\" multiple />\n  <input type=\"hidden\" name=\"csrf\" value=\"{}\"/>\n  <input type=\"submit\" value=\"Upload\" />\n</form>\n",
+                "\n<form class=\"upload-form\" action=\"{}{}\" method=\"POST\" enctype=\"multipart/form-data\">\n  <input type=\"file\" name=\"files\" accept=\"*\" multiple />\n  <input type=\"hidden\" name=\"csrf\" value=\"{}\"/>\n  <input type=\"submit\" value=\"Upload\" />\n</form>\n",
                 config.base_url,
                 encode_link_path(path_prefix),
                 escape_html(&upload.csrf_token),
@@ -814,9 +996,11 @@ async fn list_directory(
         .unwrap_or_default();
 
     let html = format!(
-        "<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no\"/>\n  <style> a {{ text-decoration:none; }} </style>\n</head>\n<body>\n  {upload_form}\n  <div>{breadcrumb}</div>\n  <hr />\n  <table>\n    {sort_links}\n    {rows}\n  </table>\n</body>\n</html>\n",
-        upload_form = upload_form,
+        "<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no\"/>\n  <style>{PAGE_STYLE}</style>\n</head>\n<body>\n  <div class=\"finder-window\">\n    <div class=\"titlebar\">\n      <div class=\"traffic-lights\"><span class=\"dot red\"></span><span class=\"dot yellow\"></span><span class=\"dot green\"></span></div>\n      <div class=\"titlebar-title\">{}</div>\n    </div>\n    <div class=\"pathbar\">\n      {back_link}\n      <div class=\"path\">{breadcrumb}</div>\n    </div>\n    {upload_form}\n    <table class=\"listing\">\n      {sort_links}\n      {rows}\n    </table>\n  </div>\n</body>\n</html>\n",
+        escape_html(&folder_name),
+        back_link = back_link,
         breadcrumb = breadcrumb,
+        upload_form = upload_form,
         sort_links = sort_links,
         rows = rows.join("\n"),
     );

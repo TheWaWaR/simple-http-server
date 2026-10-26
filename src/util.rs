@@ -124,10 +124,6 @@ fn hex_char(value: u8) -> char {
     }
 }
 
-pub(crate) fn root_link(base_url: &str) -> String {
-    format!("<a href=\"{base_url}\"><strong>[Root]</strong></a>")
-}
-
 pub(crate) fn escape_html(value: &str) -> String {
     let mut result = String::with_capacity(value.len());
     for ch in value.chars() {
